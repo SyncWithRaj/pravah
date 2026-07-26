@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -10,4 +8,213 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum Role {
+  USER
+  ADMIN
+}
+
+// Tracks where a file upload currently stands in its lifecycle
+enum FileStatus {
+  PENDING      // Upload session created, chunks not yet started
+  UPLOADING    // Chunks are being received
+  ASSEMBLING   // All chunks received, server is assembling the file
+  COMPLETED    // File fully uploaded, assembled, and stored in MinIO
+  FAILED       // Upload failed at some point
+}
+
+// Tracks the status of each individual chunk
+enum ChunkStatus {
+  PENDING    // Chunk slot created but not yet uploaded
+  UPLOADED   // Chunk received and stored temporarily in MinIO
+  VERIFIED   // Chunk checksum validated against what client sent
+}
+
+// Tracks video transcoding pipeline status (from video-transcoding-spec.md)
+enum TranscodeStatus {
+  PENDING      // Queued, not started
+  PROCESSING   // FFmpeg is actively transcoding
+  COMPLETED    // HLS segments + playlist ready
+  FAILED       // Transcoding failed (see errorMessage)
+}
+
+// Supported output qualities matching our FFmpeg pipeline spec
+enum TranscodeQuality {
+  Q_1080P
+  Q_720P
+  Q_480P
+  Q_360P
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// USER
+// Stores all registered users. Passwords are hashed with argon2 (never plain text)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  username     String   @unique
+  passwordHash String                          // argon2 hash — never bcrypt
+  role         Role     @default(USER)
+  isVerified   Boolean  @default(false)        // Email verification flag (future)
+  
+  // Relations
+  files        File[]
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  
+  @@index([email])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FILE
+// Core metadata for every uploaded file. Tracks upload progress and versioning.
+// One file can have many versions (v1, v2...) and many chunks.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model File {
+  id             String     @id @default(uuid())
+  name           String                           // Original filename e.g. "demo-video.mp4"
+  mimeType       String                           // e.g. "video/mp4", "image/png"
+  totalSize      BigInt                           // Total file size in bytes (BigInt for large files)
+  totalChunks    Int                              // How many chunks this file is split into
+  uploadedChunks Int        @default(0)           // Progress: how many chunks received so far
+  checksum       String?                          // SHA-256 of fully assembled file (set on completion)
+  status         FileStatus @default(PENDING)
+  
+  // MinIO storage info
+  bucketName     String     @default("pravah-origin") // Always our main bucket
+  storagePath    String?                          // Final path in MinIO e.g. "{userId}/{fileId}/v1/file.mp4.gz"
+  
+  // Owner
+  ownerId        String
+  owner          User       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  
+  // Version pointer — which version is the "current/latest" one
+  // Null initially until first upload completes
+  currentVersionId String?  @unique
+  currentVersion   FileVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id], onDelete: SetNull)
+
+  // Relations
+  versions       FileVersion[]   @relation("FileVersions")
+  chunks         FileChunk[]
+  transcodes     VideoTranscode[]
+
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@index([ownerId])
+  @@index([status])
+  @@map("files")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FILE CHUNK
+// Each row represents one chunk of a resumable upload.
+// The client can upload chunks in any order; the server tracks which are done.
+// All chunks for a file are assembled server-side once all are VERIFIED.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model FileChunk {
+  id          String      @id @default(uuid())
+  chunkIndex  Int                               // 0-based index (chunk 0, chunk 1 ... chunk N-1)
+  size        Int                               // Size of this chunk in bytes
+  checksum    String                            // SHA-256 sent by client — verified server-side
+  storagePath String                            // Temp MinIO path e.g. "{fileId}/chunks/chunk-{index}"
+  status      ChunkStatus @default(PENDING)
+  
+  // Relations
+  fileId      String
+  file        File        @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  
+  @@unique([fileId, chunkIndex])                // Prevents duplicate chunks for same file
+  @@index([fileId])
+  @@index([fileId, status])                     // Fast query: "how many chunks are VERIFIED for fileId X?"
+  @@map("file_chunks")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FILE VERSION
+// Every time a file is re-uploaded or updated, a new version row is created.
+// v1 → original upload, v2 → first update, etc.
+// The parent File.currentVersionId always points to the latest version.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model FileVersion {
+  id            String   @id @default(uuid())
+  versionNumber Int                              // Sequential: 1, 2, 3 ...
+  storagePath   String                           // MinIO path of assembled + compressed file for this version
+  size          BigInt                           // Size of this specific version in bytes
+  checksum      String                           // SHA-256 of this assembled version
+  changeNote    String?                          // Optional: "Replaced corrupted audio" etc.
+  
+  // Relations
+  fileId        String
+  file          File     @relation("FileVersions", fields: [fileId], references: [id], onDelete: Cascade)
+  
+  // Back-relation for File.currentVersion pointer
+  currentFor    File?    @relation("CurrentVersion")
+  
+  // Video transcodes for this specific version
+  transcodes    VideoTranscode[]
+  
+  createdAt     DateTime @default(now())
+  
+  @@unique([fileId, versionNumber])              // Version numbers are unique per file
+  @@index([fileId])
+  @@map("file_versions")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// VIDEO TRANSCODE
+// Tracks the multi-quality HLS transcoding pipeline from video-transcoding-spec.md
+// One row per quality per version (e.g. video X v2 has 4 rows: 1080p, 720p, 480p, 360p)
+// The master.m3u8 path is stored once per version on the 1080p row (highest quality)
+// ─────────────────────────────────────────────────────────────────────────────
+
+model VideoTranscode {
+  id                 String           @id @default(uuid())
+  quality            TranscodeQuality
+  status             TranscodeStatus  @default(PENDING)
+  
+  // MinIO paths — set when transcoding completes
+  storagePath        String?          // e.g. "{fileId}/{versionId}/hls/720p/"  
+  masterPlaylistPath String?          // Path to master.m3u8 (set only on the primary quality row)
+  
+  // Video metadata — populated after transcode completes
+  durationSeconds    Float?           // Video duration in seconds
+  width              Int?             // Output width in pixels
+  height             Int?             // Output height in pixels
+  bitrateKbps        Int?             // Output bitrate in Kbps
+  
+  // Error tracking
+  errorMessage       String?          // Set if status = FAILED
+  retryCount         Int      @default(0) // Number of retry attempts
+  
+  // Relations
+  fileId      String
+  file        File             @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  
+  versionId   String
+  version     FileVersion      @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([fileId, versionId, quality])         // One transcode row per quality per version per file
+  @@index([fileId])
+  @@index([versionId])
+  @@index([status])                              // Fast query for pending/failed transcodes (worker polling)
+  @@map("video_transcodes")
 }
