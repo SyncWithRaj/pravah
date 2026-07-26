@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Environment variables — NEVER commit this
+.env
+
+# Build outputs
+dist/
+build/
+
+# Logs
+*.log
+logs/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+
+# pnpm
+.pnpm-store/
