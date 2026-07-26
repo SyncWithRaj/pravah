@@ -23,3 +23,9 @@ Thumbs.db
 
 # pnpm
 .pnpm-store/
+
+# AI Coding Assistant configs — machine-specific, do not commit
+.claude/
+.windsurf/
+.agents/
+.gemini/
