@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './auth/auth.module';
 
 @Module({
   imports: [
@@ -14,6 +15,8 @@ import { PrismaModule } from './prisma/prisma.module';
 
     // Global Prisma DB connection
     PrismaModule,
+
+    AuthModule,
 
     // Feature modules (we'll add these as we build them)
     // AuthModule,
