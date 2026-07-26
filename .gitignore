@@ -29,3 +29,6 @@ Thumbs.db
 .windsurf/
 .agents/
 .gemini/
+
+# Prisma generated client — auto-generated, never commit
+generated/
