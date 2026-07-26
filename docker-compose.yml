@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  # 1. Primary Relational Database (PostgreSQL)
+  postgres:
+    image: postgres:16-alpine
+    container_name: pravah-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: admin_postgres
+      POSTGRES_PASSWORD: postgres_password
+      POSTGRES_DB: pravah_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # 2. Edge Cache & Distributed Locks (Redis)
+  redis:
+    image: redis:7-alpine
+    container_name: pravah-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # 3. Local S3-Compatible Origin Storage (MinIO)
+  minio:
+    image: minio/minio:latest
+    container_name: pravah-minio
+    restart: always
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: admin_minio
+      MINIO_ROOT_PASSWORD: minio_password
+    ports:
+      - "9000:9000" # S3 API Port
+      - "9001:9001" # Web Dashboard Console
+    volumes:
+      - minio_data:/data
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
