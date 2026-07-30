@@ -1,0 +1,23 @@
+info:
+  name: upload-complete-post
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://localhost:3000/api/v1/upload/complete
+  body:
+    type: json
+    data: |-
+      {
+        "fileId": "b1f8b320-1b29-4d65-81df-32213bdde66f"
+      }
+  auth:
+    type: bearer
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiOGE4MzFhYi02NWNjLTQ3MDEtYjI0ZS1mN2E5OTkwZjJhMzgiLCJlbWFpbCI6InJhakBwcmF2YWguY29tIiwiaWF0IjoxNzg1NDAyMzcwLCJleHAiOjE3ODU0MDMyNzB9.Lh5HzZOEedSsV3y5Nj4VdmaWYFzC7qyUEnlK7RW512c
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
