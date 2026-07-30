@@ -32,3 +32,4 @@ Thumbs.db
 
 # Prisma generated client — auto-generated, never commit
 generated/
+CREDENTIALS.txt
