@@ -15,11 +15,12 @@ import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from './current-user.decorator';
 
-@Controller('auth')
+@Controller('auth') // nestjs batata hai ki class k sare routes /auth se shuru honge
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  // @Body() pura body uthata hai
   async register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
   }
