@@ -4,6 +4,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
+import { MinioModule } from './common/minio/minio.module';
+import { UploadModule } from './upload/upload.module';
 
 @Module({
   imports: [
@@ -16,13 +18,11 @@ import { AuthModule } from './auth/auth.module';
     // Global Prisma DB connection
     PrismaModule,
 
-    AuthModule,
+    // Global MinIO Object Storage connection
+    MinioModule,
 
-    // Feature modules (we'll add these as we build them)
-    // AuthModule,
-    // UploadModule,
-    // DownloadModule,
-    // MetadataModule,
+    AuthModule,
+    UploadModule,
   ],
   controllers: [AppController],
   providers: [AppService],
