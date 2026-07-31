@@ -34,4 +34,5 @@ Thumbs.db
 generated/
 CREDENTIALS.txt
 
+# API Testing
 pravah-api-tests/
