@@ -6,6 +6,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { MinioModule } from './common/minio/minio.module';
 import { UploadModule } from './upload/upload.module';
+import { DownloadModule } from './download/download.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { UploadModule } from './upload/upload.module';
 
     AuthModule,
     UploadModule,
+    DownloadModule,
   ],
   controllers: [AppController],
   providers: [AppService],
