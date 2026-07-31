@@ -11,12 +11,17 @@ import { InitUploadDto } from './dto/init-upload.dto';
 import { UploadChunkDto } from './dto/upload-chunk.dto';
 import { CompleteUploadDto } from './dto/complete-upload.dto';
 import { FileStatus, ChunkStatus } from '@prisma/client';
+import { KafkaService } from '../common/kafka/kafka.service';
+import { ConfigService } from '@nestjs/config';
+import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
 export class UploadService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly minioService: MinioService,
+    private readonly kafkaService: KafkaService,
+    private readonly configService: ConfigService,
   ) {}
 
   /**
@@ -274,6 +279,22 @@ export class UploadService {
           storagePath: destinationKey,
           currentVersionId: version.id,
         },
+      });
+
+      // 4. Emit Kafka Event after DB commit
+      this.kafkaService.emitFileUploaded({
+        eventId: uuidv4(),
+        eventType: 'file.uploaded',
+        fileId: updatedFile.id,
+        ownerId: updatedFile.ownerId,
+        objectKey: destinationKey,
+        bucket: this.configService.get<string>('MINIO_BUCKET') || 'pravah-origin',
+        size: Number(finalSize),
+        mimeType: file.mimeType,
+        checksum: file.checksum || 'unknown',
+        compression: isCompressible ? 'gzip' : 'none',
+        schemaVersion: 1,
+        uploadedAt: updatedFile.updatedAt.toISOString(),
       });
 
       return {
