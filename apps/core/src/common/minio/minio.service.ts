@@ -14,6 +14,8 @@ import {
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
+import * as zlib from 'zlib';
+import { Upload } from '@aws-sdk/lib-storage';
 
 @Injectable()
 export class MinioService implements OnModuleInit {
@@ -227,6 +229,87 @@ export class MinioService implements OnModuleInit {
       `Assembled ${chunkKeys.length} small chunks into "${destinationKey}" via stream concatenation.`,
     );
     return destinationKey;
+  }
+
+  /**
+   * Assembles multiple chunks, streams them through Gzip, and uploads back to MinIO.
+   * Returns the final compressed size.
+   */
+  async assembleAndCompressChunks(
+    chunkKeys: string[],
+    destinationKey: string,
+    contentType?: string,
+  ): Promise<{ destinationKey: string; compressedSize: number }> {
+    // 1. Create a readable stream that pulls all chunks sequentially
+    let currentChunkIndex = 0;
+    let currentStream: Readable | null = null;
+    const minioService = this;
+
+    const chunkReadableStream = new Readable({
+      async read() {
+        try {
+          if (!currentStream) {
+            if (currentChunkIndex >= chunkKeys.length) {
+              this.push(null); // End of stream
+              return;
+            }
+            currentStream = await minioService.getObjectStream(chunkKeys[currentChunkIndex]);
+            currentChunkIndex++;
+
+            currentStream.on('data', (chunk) => {
+              const canContinue = this.push(chunk);
+              if (!canContinue) {
+                currentStream?.pause();
+              }
+            });
+
+            currentStream.on('end', () => {
+              currentStream = null;
+              // Trigger next chunk
+              this._read(0);
+            });
+
+            currentStream.on('error', (err) => {
+              this.destroy(err);
+            });
+          } else {
+            currentStream.resume();
+          }
+        } catch (err: unknown) {
+          this.destroy(err as Error);
+        }
+      }
+    });
+
+    // 2. Pipe into zlib Gzip stream
+    const gzipStream = zlib.createGzip();
+    const compressedStream = chunkReadableStream.pipe(gzipStream);
+
+    // Track size
+    let compressedSize = 0;
+    compressedStream.on('data', (chunk) => {
+      compressedSize += chunk.length;
+    });
+
+    // 3. Upload stream using @aws-sdk/lib-storage
+    const upload = new Upload({
+      client: this.s3Client,
+      params: {
+        Bucket: this.bucketName,
+        Key: destinationKey,
+        Body: compressedStream,
+        ContentType: contentType,
+        ContentEncoding: 'gzip',
+      },
+    });
+
+    await upload.done();
+
+    this.logger.log(
+      `Assembled and compressed ${chunkKeys.length} chunks into "${destinationKey}". Final size: ${compressedSize} bytes.`,
+    );
+
+    return { destinationKey, compressedSize };
   }
 
   /**
