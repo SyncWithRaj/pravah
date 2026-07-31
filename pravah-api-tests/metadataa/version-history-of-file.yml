@@ -1,0 +1,15 @@
+info:
+  name: version-history-of-file
+  type: http
+
+http:
+  method: GET
+  url: http://localhost:3000/api/v1/metadata/files/b7cd4c30-7157-4103-a5bf-2e67832e8ad0
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+​

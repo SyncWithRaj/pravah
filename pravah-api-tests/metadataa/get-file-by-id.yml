@@ -1,0 +1,17 @@
+info:
+  name: get-file-by-id
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://localhost:3000/api/v1/metadata/files/b7cd4c30-7157-4103-a5bf-2e67832e8ad0
+  auth:
+    type: bearer
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiOGE4MzFhYi02NWNjLTQ3MDEtYjI0ZS1mN2E5OTkwZjJhMzgiLCJlbWFpbCI6InJhakBwcmF2YWguY29tIiwiaWF0IjoxNzg1NDg3ODUwLCJleHAiOjE3ODU0ODg3NTB9._zJCJPzWuMvlmrKCwbo2gHRNwDpixNMIfy-Yz1FDxYs
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
