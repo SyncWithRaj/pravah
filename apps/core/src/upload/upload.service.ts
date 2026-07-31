@@ -223,7 +223,11 @@ export class UploadService {
 
     try {
       // 1. Server-side zero-copy assemble in MinIO
-      await this.minioService.assembleChunks(chunkKeys, destinationKey, file.mimeType);
+      await this.minioService.assembleChunks(
+        chunkKeys,
+        destinationKey,
+        file.mimeType,
+      );
 
       // 2. Clean up temporary chunk objects from MinIO
       await this.minioService.deleteObjects(chunkKeys);

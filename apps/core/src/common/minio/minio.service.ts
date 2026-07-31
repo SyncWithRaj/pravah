@@ -187,7 +187,11 @@ export class MinioService implements OnModuleInit {
         this.logger.warn(
           `Chunk size is below S3 5MB limit. Falling back to stream assembly for "${destinationKey}"...`,
         );
-        return this.assembleChunksInMemory(chunkKeys, destinationKey, contentType);
+        return this.assembleChunksInMemory(
+          chunkKeys,
+          destinationKey,
+          contentType,
+        );
       }
       this.logger.error(
         `Error assembling chunks for "${destinationKey}":`,
@@ -292,7 +296,9 @@ export class MinioService implements OnModuleInit {
     });
 
     // Cast needed due to AWS SDK internal version mismatch between client-s3 and s3-request-presigner
-    const client = this.s3Client as unknown as Parameters<typeof getSignedUrl>[0];
+    const client = this.s3Client as unknown as Parameters<
+      typeof getSignedUrl
+    >[0];
 
     return getSignedUrl(client, command, {
       expiresIn: expiresInSeconds,
@@ -306,7 +312,11 @@ export class MinioService implements OnModuleInit {
   async getObjectStreamWithRange(
     key: string,
     range: string,
-  ): Promise<{ stream: Readable; contentLength: number; contentRange: string }> {
+  ): Promise<{
+    stream: Readable;
+    contentLength: number;
+    contentRange: string;
+  }> {
     const res = await this.s3Client.send(
       new GetObjectCommand({
         Bucket: this.bucketName,

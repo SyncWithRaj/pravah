@@ -54,10 +54,7 @@ export class DownloadController {
       result.stream.pipe(res);
     } else {
       // Full Download → HTTP 200
-      const result = await this.downloadService.downloadFile(
-        user.id,
-        fileId,
-      );
+      const result = await this.downloadService.downloadFile(user.id, fileId);
 
       res.status(200);
       res.set({
@@ -82,7 +79,11 @@ export class DownloadController {
     @Query('download') download?: string,
   ) {
     const forceDownload = download === 'true';
-    return this.downloadService.getSignedDownloadUrl(user.id, fileId, forceDownload);
+    return this.downloadService.getSignedDownloadUrl(
+      user.id,
+      fileId,
+      forceDownload,
+    );
   }
 
   /**

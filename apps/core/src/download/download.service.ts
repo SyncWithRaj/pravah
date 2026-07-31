@@ -56,8 +56,7 @@ export class DownloadService {
     }
 
     // Use currentVersion's storagePath, fallback to file's storagePath
-    const storagePath =
-      file.currentVersion?.storagePath ?? file.storagePath;
+    const storagePath = file.currentVersion?.storagePath ?? file.storagePath;
 
     if (!storagePath) {
       throw new NotFoundException('File storage path not found');
@@ -82,8 +81,7 @@ export class DownloadService {
     const { storagePath, mimeType, fileName, totalSize } =
       await this.resolveFile(userId, fileId);
 
-    const metadata =
-      await this.minioService.getObjectMetadata(storagePath);
+    const metadata = await this.minioService.getObjectMetadata(storagePath);
     const stream = await this.minioService.getObjectStream(storagePath);
 
     return {
@@ -131,10 +129,7 @@ export class DownloadService {
     fileId: string,
     forceDownload = false,
   ): Promise<{ url: string; expiresIn: number; fileName: string }> {
-    const { storagePath, fileName } = await this.resolveFile(
-      userId,
-      fileId,
-    );
+    const { storagePath, fileName } = await this.resolveFile(userId, fileId);
 
     const expiresIn = parseInt(
       this.configService.get<string>('SIGNED_URL_EXPIRES_IN', '900'),
@@ -195,9 +190,7 @@ export class DownloadService {
     const metadata = await this.minioService.getObjectMetadata(
       version.storagePath,
     );
-    const stream = await this.minioService.getObjectStream(
-      version.storagePath,
-    );
+    const stream = await this.minioService.getObjectStream(version.storagePath);
 
     return {
       stream,
