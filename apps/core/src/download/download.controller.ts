@@ -51,6 +51,10 @@ export class DownloadController {
         'Accept-Ranges': 'bytes',
       });
 
+      if (result.isCompressed) {
+        res.setHeader('Content-Encoding', 'gzip');
+      }
+
       result.stream.pipe(res);
     } else {
       // Full Download → HTTP 200
@@ -63,6 +67,10 @@ export class DownloadController {
         'Content-Disposition': `attachment; filename="${result.fileName}"`,
         'Accept-Ranges': 'bytes',
       });
+
+      if (result.isCompressed) {
+        res.setHeader('Content-Encoding', 'gzip');
+      }
 
       result.stream.pipe(res);
     }
@@ -118,6 +126,10 @@ export class DownloadController {
         'Accept-Ranges': 'bytes',
       });
 
+      if (result.isCompressed) {
+        res.setHeader('Content-Encoding', 'gzip');
+      }
+
       result.stream.pipe(res);
     } else {
       const result = await this.downloadService.downloadVersion(
@@ -133,6 +145,10 @@ export class DownloadController {
         'Content-Disposition': `attachment; filename="${result.fileName}"`,
         'Accept-Ranges': 'bytes',
       });
+
+      if (result.isCompressed) {
+        res.setHeader('Content-Encoding', 'gzip');
+      }
 
       result.stream.pipe(res);
     }

@@ -15,6 +15,7 @@ export interface DownloadStreamResult {
   contentType: string;
   fileName: string;
   totalSize: number;
+  isCompressed?: boolean;
 }
 
 export interface PartialDownloadResult extends DownloadStreamResult {
@@ -68,6 +69,7 @@ export class DownloadService {
       mimeType: file.mimeType,
       fileName: file.name,
       totalSize: Number(file.totalSize),
+      isCompressed: file.currentVersion?.isCompressed ?? false,
     };
   }
 
@@ -78,7 +80,7 @@ export class DownloadService {
     userId: string,
     fileId: string,
   ): Promise<DownloadStreamResult> {
-    const { storagePath, mimeType, fileName, totalSize } =
+    const { storagePath, mimeType, fileName, totalSize, isCompressed } =
       await this.resolveFile(userId, fileId);
 
     const metadata = await this.minioService.getObjectMetadata(storagePath);
@@ -90,6 +92,7 @@ export class DownloadService {
       contentType: mimeType || metadata.contentType,
       fileName,
       totalSize,
+      isCompressed,
     };
   }
 
@@ -102,7 +105,7 @@ export class DownloadService {
     fileId: string,
     rangeHeader: string,
   ): Promise<PartialDownloadResult> {
-    const { storagePath, mimeType, fileName, totalSize } =
+    const { storagePath, mimeType, fileName, totalSize, isCompressed } =
       await this.resolveFile(userId, fileId);
 
     const result = await this.minioService.getObjectStreamWithRange(
@@ -117,6 +120,7 @@ export class DownloadService {
       contentType: mimeType || 'application/octet-stream',
       fileName,
       totalSize,
+      isCompressed,
     };
   }
 
@@ -198,6 +202,7 @@ export class DownloadService {
       contentType: file.mimeType || metadata.contentType,
       fileName: file.name,
       totalSize: Number(version.size),
+      isCompressed: version.isCompressed,
     };
   }
 
@@ -252,6 +257,7 @@ export class DownloadService {
       contentType: file.mimeType || 'application/octet-stream',
       fileName: file.name,
       totalSize: Number(version.size),
+      isCompressed: version.isCompressed,
     };
   }
 }
