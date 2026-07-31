@@ -7,6 +7,7 @@ import {
   UseGuards,
   ParseIntPipe,
   Header,
+  Query,
 } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { DownloadService } from './download.service';
@@ -78,8 +79,10 @@ export class DownloadController {
   async getSignedUrl(
     @CurrentUser() user: Omit<User, 'passwordHash'>,
     @Param('fileId') fileId: string,
+    @Query('download') download?: string,
   ) {
-    return this.downloadService.getSignedDownloadUrl(user.id, fileId);
+    const forceDownload = download === 'true';
+    return this.downloadService.getSignedDownloadUrl(user.id, fileId, forceDownload);
   }
 
   /**

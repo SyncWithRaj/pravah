@@ -129,6 +129,7 @@ export class DownloadService {
   async getSignedDownloadUrl(
     userId: string,
     fileId: string,
+    forceDownload = false,
   ): Promise<{ url: string; expiresIn: number; fileName: string }> {
     const { storagePath, fileName } = await this.resolveFile(
       userId,
@@ -143,6 +144,7 @@ export class DownloadService {
     const url = await this.minioService.generateSignedUrl(
       storagePath,
       expiresIn,
+      forceDownload ? fileName : undefined,
     );
 
     return {
