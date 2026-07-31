@@ -93,13 +93,18 @@ export class MinioService implements OnModuleInit {
   /**
    * Uploads a single buffer chunk to MinIO.
    */
-  async uploadChunk(key: string, buffer: Buffer): Promise<string> {
+  async uploadChunk(
+    key: string,
+    buffer: Buffer,
+    contentType?: string,
+  ): Promise<string> {
     await this.s3Client.send(
       new PutObjectCommand({
         Bucket: this.bucketName,
         Key: key,
         Body: buffer,
         ContentLength: buffer.length,
+        ContentType: contentType,
       }),
     );
     return key;
@@ -111,12 +116,14 @@ export class MinioService implements OnModuleInit {
   async assembleChunks(
     chunkKeys: string[],
     destinationKey: string,
+    contentType?: string,
   ): Promise<string> {
     // 1. Initiate Multipart Upload for destination object
     const initRes = await this.s3Client.send(
       new CreateMultipartUploadCommand({
         Bucket: this.bucketName,
         Key: destinationKey,
+        ContentType: contentType,
       }),
     );
 
@@ -180,7 +187,7 @@ export class MinioService implements OnModuleInit {
         this.logger.warn(
           `Chunk size is below S3 5MB limit. Falling back to stream assembly for "${destinationKey}"...`,
         );
-        return this.assembleChunksInMemory(chunkKeys, destinationKey);
+        return this.assembleChunksInMemory(chunkKeys, destinationKey, contentType);
       }
       this.logger.error(
         `Error assembling chunks for "${destinationKey}":`,
@@ -196,6 +203,7 @@ export class MinioService implements OnModuleInit {
   private async assembleChunksInMemory(
     chunkKeys: string[],
     destinationKey: string,
+    contentType?: string,
   ): Promise<string> {
     const buffers: Buffer[] = [];
 
@@ -209,7 +217,7 @@ export class MinioService implements OnModuleInit {
     }
 
     const finalBuffer = Buffer.concat(buffers);
-    await this.uploadChunk(destinationKey, finalBuffer);
+    await this.uploadChunk(destinationKey, finalBuffer, contentType);
 
     this.logger.log(
       `Assembled ${chunkKeys.length} small chunks into "${destinationKey}" via stream concatenation.`,
@@ -270,10 +278,17 @@ export class MinioService implements OnModuleInit {
    * Generates a pre-signed URL for direct download from MinIO.
    * The URL is time-limited and self-authenticating — no JWT needed to use it.
    */
-  async generateSignedUrl(key: string, expiresInSeconds = 900): Promise<string> {
+  async generateSignedUrl(
+    key: string,
+    expiresInSeconds = 900,
+    forceDownloadFileName?: string,
+  ): Promise<string> {
     const command = new GetObjectCommand({
       Bucket: this.bucketName,
       Key: key,
+      ResponseContentDisposition: forceDownloadFileName
+        ? `attachment; filename="${forceDownloadFileName}"`
+        : undefined,
     });
 
     // Cast needed due to AWS SDK internal version mismatch between client-s3 and s3-request-presigner
