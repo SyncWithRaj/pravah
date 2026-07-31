@@ -222,12 +222,26 @@ export class UploadService {
     const destinationKey = `files/${userId}/${file.id}/v1/${file.name}`;
 
     try {
-      // 1. Server-side zero-copy assemble in MinIO
-      await this.minioService.assembleChunks(
-        chunkKeys,
-        destinationKey,
-        file.mimeType,
-      );
+      const compressibleTypes = ['text/plain', 'text/html', 'text/css', 'text/csv', 'application/json', 'application/javascript', 'application/xml'];
+      const isCompressible = compressibleTypes.includes(file.mimeType);
+
+      let finalSize: bigint | number = file.totalSize;
+      
+      // 1. Assemble chunks in MinIO
+      if (isCompressible) {
+        const result = await this.minioService.assembleAndCompressChunks(
+          chunkKeys,
+          destinationKey,
+          file.mimeType,
+        );
+        finalSize = result.compressedSize;
+      } else {
+        await this.minioService.assembleChunks(
+          chunkKeys,
+          destinationKey,
+          file.mimeType,
+        );
+      }
 
       // 2. Clean up temporary chunk objects from MinIO
       await this.minioService.deleteObjects(chunkKeys);
@@ -238,8 +252,9 @@ export class UploadService {
           fileId: file.id,
           versionNumber: 1,
           storagePath: destinationKey,
-          size: file.totalSize,
+          size: finalSize,
           checksum: 'assembled-version-1',
+          isCompressed: isCompressible,
         },
       });
 
