@@ -8,6 +8,7 @@ import { MinioModule } from './common/minio/minio.module';
 import { UploadModule } from './upload/upload.module';
 import { DownloadModule } from './download/download.module';
 import { MetadataModule } from './metadata/metadata.module';
+import { KafkaModule } from './common/kafka/kafka.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { MetadataModule } from './metadata/metadata.module';
 
     // Global MinIO Object Storage connection
     MinioModule,
+    KafkaModule,
 
     AuthModule,
     UploadModule,
