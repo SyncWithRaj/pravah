@@ -10,7 +10,9 @@ import {
   CompleteMultipartUploadCommand,
   DeleteObjectsCommand,
   GetObjectCommand,
+  HeadObjectCommand,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Readable } from 'stream';
 
 @Injectable()
@@ -243,6 +245,66 @@ export class MinioService implements OnModuleInit {
     );
 
     return res.Body as Readable;
+  }
+
+  /**
+   * Gets object metadata (size, content-type) from MinIO without downloading the file.
+   */
+  async getObjectMetadata(
+    key: string,
+  ): Promise<{ contentLength: number; contentType: string }> {
+    const res = await this.s3Client.send(
+      new HeadObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+      }),
+    );
+
+    return {
+      contentLength: res.ContentLength ?? 0,
+      contentType: res.ContentType ?? 'application/octet-stream',
+    };
+  }
+
+  /**
+   * Generates a pre-signed URL for direct download from MinIO.
+   * The URL is time-limited and self-authenticating — no JWT needed to use it.
+   */
+  async generateSignedUrl(key: string, expiresInSeconds = 900): Promise<string> {
+    const command = new GetObjectCommand({
+      Bucket: this.bucketName,
+      Key: key,
+    });
+
+    // Cast needed due to AWS SDK internal version mismatch between client-s3 and s3-request-presigner
+    const client = this.s3Client as unknown as Parameters<typeof getSignedUrl>[0];
+
+    return getSignedUrl(client, command, {
+      expiresIn: expiresInSeconds,
+    });
+  }
+
+  /**
+   * Retrieves a partial object stream from MinIO using an HTTP Range header.
+   * Used for video seeking / scrubbing (HTTP 206 Partial Content).
+   */
+  async getObjectStreamWithRange(
+    key: string,
+    range: string,
+  ): Promise<{ stream: Readable; contentLength: number; contentRange: string }> {
+    const res = await this.s3Client.send(
+      new GetObjectCommand({
+        Bucket: this.bucketName,
+        Key: key,
+        Range: range,
+      }),
+    );
+
+    return {
+      stream: res.Body as Readable,
+      contentLength: res.ContentLength ?? 0,
+      contentRange: res.ContentRange ?? '',
+    };
   }
 
   getBucketName(): string {
