@@ -32,6 +32,7 @@ export class UploadService {
         totalChunks: dto.totalChunks,
         ownerId: userId,
         status: FileStatus.PENDING,
+        checksum: dto.fullFileChecksum,
       },
     });
 
@@ -222,7 +223,15 @@ export class UploadService {
     const destinationKey = `files/${userId}/${file.id}/v1/${file.name}`;
 
     try {
-      const compressibleTypes = ['text/plain', 'text/html', 'text/css', 'text/csv', 'application/json', 'application/javascript', 'application/xml'];
+      const compressibleTypes = [
+        'text/plain',
+        'text/html',
+        'text/css',
+        'text/csv',
+        'application/json',
+        'application/javascript',
+        'application/xml',
+      ];
       const isCompressible = compressibleTypes.includes(file.mimeType);
 
       let finalSize: bigint | number = file.totalSize;
@@ -253,7 +262,7 @@ export class UploadService {
           versionNumber: 1,
           storagePath: destinationKey,
           size: finalSize,
-          checksum: 'assembled-version-1',
+          checksum: file.checksum || 'unknown',
           isCompressed: isCompressible,
         },
       });

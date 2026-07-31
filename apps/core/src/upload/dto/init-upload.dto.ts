@@ -1,4 +1,4 @@
-import { IsString, IsNotEmpty, IsNumber, Min } from 'class-validator';
+import { IsString, IsNotEmpty, IsNumber, Min, IsOptional } from 'class-validator';
 
 export class InitUploadDto {
   @IsString()
@@ -16,4 +16,8 @@ export class InitUploadDto {
   @IsNumber()
   @Min(1)
   totalChunks!: number;
+
+  @IsString()
+  @IsOptional()
+  fullFileChecksum?: string;
 }
