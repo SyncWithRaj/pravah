@@ -11,24 +11,24 @@ http:
     data:
       - name: fileId
         type: text
-        value: b1f8b320-1b29-4d65-81df-32213bdde66f
+        value: 4deda2d6-1a0d-41e3-88cf-86c66e67156a
         contentType: Text
       - name: chunkIndex
         type: text
-        value: "1"
+        value: "5"
         contentType: Text
       - name: checksum
         type: text
-        value: e258d248fda94c63753607f7c4494ee0fcbe92f1a76bfdac795c9d84101eb317
+        value: skip
         contentType: Text
       - name: file
         type: file
         value:
-          - chunk1.txt
+          - test-files/chunk-af
         contentType: File
   auth:
     type: bearer
-    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiOGE4MzFhYi02NWNjLTQ3MDEtYjI0ZS1mN2E5OTkwZjJhMzgiLCJlbWFpbCI6InJhakBwcmF2YWguY29tIiwiaWF0IjoxNzg1NDAyMzcwLCJleHAiOjE3ODU0MDMyNzB9.Lh5HzZOEedSsV3y5Nj4VdmaWYFzC7qyUEnlK7RW512c
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiOGE4MzFhYi02NWNjLTQ3MDEtYjI0ZS1mN2E5OTkwZjJhMzgiLCJlbWFpbCI6InJhakBwcmF2YWguY29tIiwiaWF0IjoxNzg1NDgyMTIwLCJleHAiOjE3ODU0ODMwMjB9.Fe-xQ1eIjcnMTby66z0aGMcObKjB4XoZ9mLr6Qjwha0
 
 settings:
   encodeUrl: true

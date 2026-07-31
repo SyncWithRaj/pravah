@@ -1,17 +1,11 @@
 info:
-  name: upload-complete-post
+  name: signed-media
   type: http
   seq: 1
 
 http:
-  method: POST
-  url: http://localhost:3000/api/v1/upload/complete
-  body:
-    type: json
-    data: |-
-      {
-        "fileId": "4deda2d6-1a0d-41e3-88cf-86c66e67156a"
-      }
+  method: GET
+  url: http://localhost:3000/api/v1/download/4deda2d6-1a0d-41e3-88cf-86c66e67156a/signed
   auth:
     type: bearer
     token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiOGE4MzFhYi02NWNjLTQ3MDEtYjI0ZS1mN2E5OTkwZjJhMzgiLCJlbWFpbCI6InJhakBwcmF2YWguY29tIiwiaWF0IjoxNzg1NDgyMTIwLCJleHAiOjE3ODU0ODMwMjB9.Fe-xQ1eIjcnMTby66z0aGMcObKjB4XoZ9mLr6Qjwha0
@@ -21,3 +15,4 @@ settings:
   timeout: 0
   followRedirects: true
   maxRedirects: 5
+​

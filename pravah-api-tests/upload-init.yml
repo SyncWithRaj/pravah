@@ -10,14 +10,14 @@ http:
     type: json
     data: |-
       {
-        "name": "my-test-file.txt",
-        "mimeType": "text/plain",
-        "totalSize": 10,
-        "totalChunks": 2
+        "name": "test.mp4",
+        "mimeType": "video/mp4",
+        "totalSize": 27000000,
+        "totalChunks": 6
       }
   auth:
     type: bearer
-    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiOGE4MzFhYi02NWNjLTQ3MDEtYjI0ZS1mN2E5OTkwZjJhMzgiLCJlbWFpbCI6InJhakBwcmF2YWguY29tIiwiaWF0IjoxNzg1NDAyMzcwLCJleHAiOjE3ODU0MDMyNzB9.Lh5HzZOEedSsV3y5Nj4VdmaWYFzC7qyUEnlK7RW512c
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJiOGE4MzFhYi02NWNjLTQ3MDEtYjI0ZS1mN2E5OTkwZjJhMzgiLCJlbWFpbCI6InJhakBwcmF2YWguY29tIiwiaWF0IjoxNzg1NDgyMTIwLCJleHAiOjE3ODU0ODMwMjB9.Fe-xQ1eIjcnMTby66z0aGMcObKjB4XoZ9mLr6Qjwha0
 
 settings:
   encodeUrl: true
