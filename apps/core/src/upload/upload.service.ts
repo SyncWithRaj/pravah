@@ -88,6 +88,7 @@ export class UploadService {
       .digest('hex');
 
     if (
+      dto.checksum.trim().toLowerCase() !== 'skip' &&
       calculatedChecksum.toLowerCase() !== dto.checksum.trim().toLowerCase()
     ) {
       throw new BadRequestException(
@@ -222,7 +223,7 @@ export class UploadService {
 
     try {
       // 1. Server-side zero-copy assemble in MinIO
-      await this.minioService.assembleChunks(chunkKeys, destinationKey);
+      await this.minioService.assembleChunks(chunkKeys, destinationKey, file.mimeType);
 
       // 2. Clean up temporary chunk objects from MinIO
       await this.minioService.deleteObjects(chunkKeys);
