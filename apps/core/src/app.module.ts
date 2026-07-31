@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module';
 import { MinioModule } from './common/minio/minio.module';
 import { UploadModule } from './upload/upload.module';
 import { DownloadModule } from './download/download.module';
+import { MetadataModule } from './metadata/metadata.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { DownloadModule } from './download/download.module';
     AuthModule,
     UploadModule,
     DownloadModule,
+    MetadataModule,
   ],
   controllers: [AppController],
   providers: [AppService],
