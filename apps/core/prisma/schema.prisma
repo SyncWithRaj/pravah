@@ -156,6 +156,7 @@ model FileVersion {
   storagePath   String                           // MinIO path of assembled + compressed file for this version
   size          BigInt                           // Size of this specific version in bytes
   checksum      String                           // SHA-256 of this assembled version
+  isCompressed  Boolean  @default(false)         // True if stored in MinIO with Gzip compression
   changeNote    String?                          // Optional: "Replaced corrupted audio" etc.
   
   // Relations
