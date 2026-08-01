@@ -38,7 +38,7 @@ async function bootstrap() {
   const port = process.env.APP_PORT ?? 3000;
   await app.listen(port);
 
-  logger.log(`🚀 Pravah CDN Core running on: http://localhost:${port}/api/v1`);
+  logger.log(`Pravah CDN Core running on: http://localhost:${port}/api/v1`);
 }
 
 void bootstrap();
