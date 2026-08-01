@@ -9,12 +9,14 @@ import { KafkaService } from './kafka.service';
       {
         name: 'KAFKA_CLIENT',
         imports: [ConfigModule],
-        useFactory: async (configService: ConfigService) => ({
+        useFactory: (configService: ConfigService) => ({
           transport: Transport.KAFKA,
           options: {
             client: {
               clientId: 'pravah-core',
-              brokers: [configService.get<string>('KAFKA_BROKERS') || 'localhost:19092'],
+              brokers: [
+                configService.get<string>('KAFKA_BROKERS') || 'localhost:19092',
+              ],
             },
             producerOnlyMode: true, // We are only emitting events from the core API right now
           },

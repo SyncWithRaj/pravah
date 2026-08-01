@@ -45,7 +45,13 @@ export class UploadController {
     if (!file) {
       throw new BadRequestException('No chunk file uploaded in request body');
     }
-    return this.uploadService.uploadChunk(user.id, fileId, chunkIndex, dto.checksum, file.buffer);
+    return this.uploadService.uploadChunk(
+      user.id,
+      fileId,
+      chunkIndex,
+      dto.checksum,
+      file.buffer,
+    );
   }
 
   @Get('status/:fileId')

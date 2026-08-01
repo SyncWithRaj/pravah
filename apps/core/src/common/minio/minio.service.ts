@@ -243,42 +243,46 @@ export class MinioService implements OnModuleInit {
     // 1. Create a readable stream that pulls all chunks sequentially
     let currentChunkIndex = 0;
     let currentStream: Readable | null = null;
-    const minioService = this;
+
+    // Capture getObjectStream as a bound reference to avoid aliasing 'this'
+    const fetchChunkStream = (key: string) => this.getObjectStream(key);
 
     const chunkReadableStream = new Readable({
-      async read() {
-        try {
-          if (!currentStream) {
-            if (currentChunkIndex >= chunkKeys.length) {
-              this.push(null); // End of stream
-              return;
-            }
-            currentStream = await minioService.getObjectStream(chunkKeys[currentChunkIndex]);
-            currentChunkIndex++;
+      read() {
+        if (!currentStream) {
+          if (currentChunkIndex >= chunkKeys.length) {
+            this.push(null); // End of stream
+            return;
+          }
+          fetchChunkStream(chunkKeys[currentChunkIndex])
+            .then((stream) => {
+              currentStream = stream;
+              currentChunkIndex++;
 
-            currentStream.on('data', (chunk) => {
-              const canContinue = this.push(chunk);
-              if (!canContinue) {
-                currentStream?.pause();
-              }
-            });
+              currentStream.on('data', (chunk: Buffer) => {
+                const canContinue = this.push(chunk);
+                if (!canContinue) {
+                  currentStream?.pause();
+                }
+              });
 
-            currentStream.on('end', () => {
-              currentStream = null;
-              // Trigger next chunk
-              this._read(0);
-            });
+              currentStream.on('end', () => {
+                currentStream = null;
+                // Trigger next chunk
+                this._read(0);
+              });
 
-            currentStream.on('error', (err) => {
+              currentStream.on('error', (err: Error) => {
+                this.destroy(err);
+              });
+            })
+            .catch((err: Error) => {
               this.destroy(err);
             });
-          } else {
-            currentStream.resume();
-          }
-        } catch (err: unknown) {
-          this.destroy(err as Error);
+        } else {
+          currentStream.resume();
         }
-      }
+      },
     });
 
     // 2. Pipe into zlib Gzip stream
@@ -287,7 +291,7 @@ export class MinioService implements OnModuleInit {
 
     // Track size
     let compressedSize = 0;
-    compressedStream.on('data', (chunk) => {
+    compressedStream.on('data', (chunk: Buffer) => {
       compressedSize += chunk.length;
     });
 

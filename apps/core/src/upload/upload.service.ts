@@ -246,7 +246,7 @@ export class UploadService {
       const isCompressible = compressibleTypes.includes(file.mimeType);
 
       let finalSize: bigint | number = file.totalSize;
-      
+
       // 1. Assemble chunks in MinIO
       if (isCompressible) {
         const result = await this.minioService.assembleAndCompressChunks(
@@ -294,7 +294,8 @@ export class UploadService {
         fileId: updatedFile.id,
         ownerId: updatedFile.ownerId,
         objectKey: destinationKey,
-        bucket: this.configService.get<string>('MINIO_BUCKET') || 'pravah-origin',
+        bucket:
+          this.configService.get<string>('MINIO_BUCKET') || 'pravah-origin',
         size: Number(finalSize),
         mimeType: file.mimeType,
         checksum: file.checksum || 'unknown',
