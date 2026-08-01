@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Put,
   Get,
   Body,
   Param,
@@ -8,6 +9,7 @@ import {
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { UploadService } from './upload.service';
@@ -31,17 +33,19 @@ export class UploadController {
     return this.uploadService.initUpload(user.id, dto);
   }
 
-  @Post('chunk')
+  @Put(':fileId/chunk/:chunkIndex')
   @UseInterceptors(FileInterceptor('file'))
   async uploadChunk(
     @CurrentUser() user: Omit<User, 'passwordHash'>,
+    @Param('fileId') fileId: string,
+    @Param('chunkIndex', ParseIntPipe) chunkIndex: number,
     @Body() dto: UploadChunkDto,
     @UploadedFile() file: Express.Multer.File,
   ) {
     if (!file) {
       throw new BadRequestException('No chunk file uploaded in request body');
     }
-    return this.uploadService.uploadChunk(user.id, dto, file.buffer);
+    return this.uploadService.uploadChunk(user.id, fileId, chunkIndex, dto.checksum, file.buffer);
   }
 
   @Get('status/:fileId')

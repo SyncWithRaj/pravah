@@ -8,7 +8,6 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MinioService } from '../common/minio/minio.service';
 import { InitUploadDto } from './dto/init-upload.dto';
-import { UploadChunkDto } from './dto/upload-chunk.dto';
 import { CompleteUploadDto } from './dto/complete-upload.dto';
 import { FileStatus, ChunkStatus } from '@prisma/client';
 import { KafkaService } from '../common/kafka/kafka.service';
@@ -65,14 +64,21 @@ export class UploadService {
 
   /**
    * Processes and stores an individual file chunk.
+   * Idempotent: safe to retry on network failure (PUT semantics).
    */
-  async uploadChunk(userId: string, dto: UploadChunkDto, fileBuffer: Buffer) {
+  async uploadChunk(
+    userId: string,
+    fileId: string,
+    chunkIndex: number,
+    checksum: string,
+    fileBuffer: Buffer,
+  ) {
     if (!fileBuffer || fileBuffer.length === 0) {
       throw new BadRequestException('Chunk buffer cannot be empty');
     }
 
     const file = await this.prisma.file.findUnique({
-      where: { id: dto.fileId },
+      where: { id: fileId },
     });
 
     if (!file) {
@@ -94,16 +100,16 @@ export class UploadService {
       .digest('hex');
 
     if (
-      dto.checksum.trim().toLowerCase() !== 'skip' &&
-      calculatedChecksum.toLowerCase() !== dto.checksum.trim().toLowerCase()
+      checksum.trim().toLowerCase() !== 'skip' &&
+      calculatedChecksum.toLowerCase() !== checksum.trim().toLowerCase()
     ) {
       throw new BadRequestException(
-        `Checksum mismatch for chunk ${dto.chunkIndex}. Server calculated: ${calculatedChecksum}, received: ${dto.checksum}`,
+        `Checksum mismatch for chunk ${chunkIndex}. Server calculated: ${calculatedChecksum}, received: ${checksum}`,
       );
     }
 
-    // 2. Upload chunk to MinIO
-    const chunkStoragePath = `chunks/${file.id}/chunk-${dto.chunkIndex}`;
+    // 2. Upload chunk to MinIO (idempotent — overwrites if already exists)
+    const chunkStoragePath = `chunks/${file.id}/chunk-${chunkIndex}`;
     await this.minioService.uploadChunk(chunkStoragePath, fileBuffer);
 
     // 3. Update FileChunk & File in DB
@@ -112,12 +118,12 @@ export class UploadService {
         where: {
           fileId_chunkIndex: {
             fileId: file.id,
-            chunkIndex: dto.chunkIndex,
+            chunkIndex: chunkIndex,
           },
         },
         data: {
           size: fileBuffer.length,
-          checksum: dto.checksum,
+          checksum: checksum,
           status: ChunkStatus.VERIFIED,
         },
       }),
@@ -140,9 +146,9 @@ export class UploadService {
     return {
       success: true,
       fileId: file.id,
-      chunkIndex: dto.chunkIndex,
+      chunkIndex: chunkIndex,
       uploadedChunks: updatedFile?.uploadedChunks || 0,
-      totalChunks: updatedFile?.totalChunks || dto.chunkIndex + 1,
+      totalChunks: updatedFile?.totalChunks || chunkIndex + 1,
     };
   }
 
