@@ -9,6 +9,7 @@ import { UploadModule } from './upload/upload.module';
 import { DownloadModule } from './download/download.module';
 import { MetadataModule } from './metadata/metadata.module';
 import { KafkaModule } from './common/kafka/kafka.module';
+import { EdgeCacheModule } from './common/edge-cache/edge-cache.module';
 
 @Module({
   imports: [
@@ -21,9 +22,9 @@ import { KafkaModule } from './common/kafka/kafka.module';
     // Global Prisma DB connection
     PrismaModule,
 
-    // Global MinIO Object Storage connection
     MinioModule,
     KafkaModule,
+    EdgeCacheModule,
 
     AuthModule,
     UploadModule,
