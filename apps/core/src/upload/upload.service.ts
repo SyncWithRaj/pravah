@@ -12,6 +12,7 @@ import { CompleteUploadDto } from './dto/complete-upload.dto';
 import { FileStatus, ChunkStatus } from '@prisma/client';
 import { KafkaService } from '../common/kafka/kafka.service';
 import { ConfigService } from '@nestjs/config';
+import { EdgeCacheService } from '../common/edge-cache/edge-cache.service';
 import { v4 as uuidv4 } from 'uuid';
 
 @Injectable()
@@ -21,6 +22,7 @@ export class UploadService {
     private readonly minioService: MinioService,
     private readonly kafkaService: KafkaService,
     private readonly configService: ConfigService,
+    private readonly edgeCacheService: EdgeCacheService,
   ) {}
 
   /**
@@ -59,6 +61,63 @@ export class UploadService {
       name: file.name,
       totalChunks: file.totalChunks,
       status: file.status,
+    };
+  }
+
+  /**
+   * Initializes an upload session for a NEW version of an existing file.
+   */
+  async initVersionUpload(userId: string, fileId: string, dto: InitUploadDto) {
+    const file = await this.prisma.file.findUnique({
+      where: { id: fileId },
+    });
+
+    if (!file) {
+      throw new NotFoundException('File not found');
+    }
+
+    if (file.ownerId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    // Clean up any old dangling chunks from previous uploads for this fileId
+    await this.prisma.fileChunk.deleteMany({
+      where: { fileId: file.id },
+    });
+
+    // Update the File record to reflect the new incoming version
+    const updatedFile = await this.prisma.file.update({
+      where: { id: file.id },
+      data: {
+        name: dto.name,
+        mimeType: dto.mimeType,
+        totalSize: BigInt(dto.totalSize),
+        totalChunks: dto.totalChunks,
+        uploadedChunks: 0,
+        status: FileStatus.PENDING,
+        checksum: dto.fullFileChecksum,
+      },
+    });
+
+    // Create new FileChunk rows for the new version
+    const chunkData = Array.from({ length: dto.totalChunks }, (_, index) => ({
+      fileId: file.id,
+      chunkIndex: index,
+      size: 0,
+      checksum: '',
+      storagePath: `chunks/${file.id}/chunk-${index}`,
+      status: ChunkStatus.PENDING,
+    }));
+
+    await this.prisma.fileChunk.createMany({
+      data: chunkData,
+    });
+
+    return {
+      fileId: updatedFile.id,
+      name: updatedFile.name,
+      totalChunks: updatedFile.totalChunks,
+      status: updatedFile.status,
     };
   }
 
@@ -230,8 +289,18 @@ export class UploadService {
       data: { status: FileStatus.ASSEMBLING },
     });
 
+    // 0. Determine the next version number
+    const maxVersion = await this.prisma.fileVersion.findFirst({
+      where: { fileId: file.id },
+      orderBy: { versionNumber: 'desc' },
+      select: { versionNumber: true },
+    });
+
+    const nextVersionNumber = (maxVersion?.versionNumber || 0) + 1;
+    const versionStr = `v${nextVersionNumber}`;
+
     const chunkKeys = file.chunks.map((c) => c.storagePath);
-    const destinationKey = `files/${userId}/${file.id}/v1/${file.name}`;
+    const destinationKey = `files/${userId}/${file.id}/${versionStr}/${file.name}`;
 
     try {
       const compressibleTypes = [
@@ -266,11 +335,11 @@ export class UploadService {
       // 2. Clean up temporary chunk objects from MinIO
       await this.minioService.deleteObjects(chunkKeys);
 
-      // 3. Create FileVersion v1 and update File record
+      // 3. Create FileVersion and update File record
       const version = await this.prisma.fileVersion.create({
         data: {
           fileId: file.id,
-          versionNumber: 1,
+          versionNumber: nextVersionNumber,
           storagePath: destinationKey,
           size: finalSize,
           checksum: file.checksum || 'unknown',
@@ -287,22 +356,37 @@ export class UploadService {
         },
       });
 
-      // 4. Emit Kafka Event after DB commit
+      // 4. Update EdgeCache Pointer (Lazy loading resilient)
+      await this.edgeCacheService
+        .setCurrentVersion(file.id, version.id)
+        .catch((e: Error) => {
+          // If Redis pointer update fails, Postgres is authoritative and will lazy-load on next miss
+          console.warn(
+            `Failed to update Redis pointer for ${file.id}: ${e.message}`,
+          );
+        });
+
+      // 5. Emit Kafka Event after DB commit
       this.kafkaService.emitFileUploaded({
         eventId: uuidv4(),
-        eventType: 'file.uploaded',
+        eventType:
+          nextVersionNumber > 1 ? 'file.version_created' : 'file.uploaded',
         fileId: updatedFile.id,
         ownerId: updatedFile.ownerId,
         objectKey: destinationKey,
-        bucket:
-          this.configService.get<string>('MINIO_BUCKET') || 'pravah-origin',
+        bucket: updatedFile.bucketName,
         size: Number(finalSize),
-        mimeType: file.mimeType,
+        mimeType: updatedFile.mimeType,
         checksum: file.checksum || 'unknown',
-        compression: isCompressible ? 'gzip' : 'none',
+        compression: version.isCompressed ? 'gzip' : 'none',
         schemaVersion: 1,
-        uploadedAt: updatedFile.updatedAt.toISOString(),
+        uploadedAt: new Date().toISOString(),
       });
+
+      // 6. Broadcast cache invalidation so old versions are wiped from Edge node RAM
+      if (nextVersionNumber > 1) {
+        this.kafkaService.emitCacheInvalidate(updatedFile.id);
+      }
 
       return {
         message: 'Upload completed and file assembled successfully',
