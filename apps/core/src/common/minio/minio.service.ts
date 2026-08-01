@@ -351,7 +351,7 @@ export class MinioService implements OnModuleInit {
    */
   async getObjectMetadata(
     key: string,
-  ): Promise<{ contentLength: number; contentType: string }> {
+  ): Promise<{ contentLength: number; contentType: string; etag?: string }> {
     const res = await this.s3Client.send(
       new HeadObjectCommand({
         Bucket: this.bucketName,
@@ -362,6 +362,7 @@ export class MinioService implements OnModuleInit {
     return {
       contentLength: res.ContentLength ?? 0,
       contentType: res.ContentType ?? 'application/octet-stream',
+      etag: res.ETag,
     };
   }
 
