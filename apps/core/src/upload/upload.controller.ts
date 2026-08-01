@@ -33,6 +33,15 @@ export class UploadController {
     return this.uploadService.initUpload(user.id, dto);
   }
 
+  @Post(':fileId/versions')
+  async initVersionUpload(
+    @CurrentUser() user: Omit<User, 'passwordHash'>,
+    @Param('fileId') fileId: string,
+    @Body() dto: InitUploadDto,
+  ) {
+    return this.uploadService.initVersionUpload(user.id, fileId, dto);
+  }
+
   @Put(':fileId/chunk/:chunkIndex')
   @UseInterceptors(FileInterceptor('file'))
   async uploadChunk(
