@@ -106,6 +106,7 @@ model File {
   versions       FileVersion[]   @relation("FileVersions")
   chunks         FileChunk[]
   transcodes     VideoTranscode[]
+  replications   ReplicationStatus[]
 
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
@@ -217,4 +218,84 @@ model VideoTranscode {
   @@index([versionId])
   @@index([status])                              // Fast query for pending/failed transcodes (worker polling)
   @@map("video_transcodes")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EDGE NODE STATUS ENUMS (Phase 4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Tracks the health status of an edge node as determined by the Health Check Service
+enum EdgeNodeStatus {
+  HEALTHY    // Heartbeats arriving on time
+  DEGRADED   // Missed 1 heartbeat cycle — possible network hiccup
+  DOWN       // Missed 3+ consecutive heartbeat cycles — considered dead
+}
+
+// Tracks the lifecycle of a replication job for a single file on a single edge
+enum ReplicationJobStatus {
+  PENDING      // Job created, waiting for BullMQ worker to pick it up
+  IN_PROGRESS  // Worker is actively streaming data to the edge node
+  COMPLETE     // File successfully replicated to the edge node
+  FAILED       // Replication failed after max retry attempts
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EDGE NODE (Phase 4)
+// Represents a physical or logical edge server in the CDN network.
+// Health is tracked via Redis TTL heartbeats; Postgres stores the persistent record.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model EdgeNode {
+  id            String         @id @default(uuid())
+  name          String         @unique                  // Human-readable identifier e.g. "edge-us-east-1"
+  region        String                                  // Geographic region e.g. "us-east-1", "eu-west-1"
+  endpointUrl   String                                  // Base URL of the edge node e.g. "https://edge-1.pravah.cdn"
+  status        EdgeNodeStatus @default(HEALTHY)        // Current health status
+  lastHeartbeat DateTime?                               // Last time a heartbeat was received (updated from Redis periodically)
+
+  // Relations
+  replications  ReplicationStatus[]
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([status])                                     // Fast lookup of healthy/degraded/down nodes
+  @@index([region])                                     // Fast lookup of nodes by region for routing
+  @@map("edge_nodes")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// REPLICATION STATUS (Phase 4)
+// Tracks the replication progress of a specific file version to a specific edge node.
+// Created by the Kafka consumer, processed by BullMQ workers.
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ReplicationStatus {
+  id            String               @id @default(uuid())
+  status        ReplicationJobStatus @default(PENDING)
+
+  // Retry tracking
+  attempts      Int                  @default(0)        // Number of attempts made (max 3 before DLQ)
+  lastError     String?                                 // Stores the failure reason for debugging
+
+  // Timing metrics — enables "Which edge is slow?" dashboards
+  startedAt     DateTime?                               // When the BullMQ worker picked up the job
+  completedAt   DateTime?                               // When replication finished successfully
+  durationMs    Int?                                    // Total time taken in milliseconds
+
+  // Relations
+  fileId        String
+  file          File                 @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  edgeNodeId    String
+  edgeNode      EdgeNode             @relation(fields: [edgeNodeId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+
+  @@unique([fileId, edgeNodeId])                        // One replication record per file per edge node
+  @@index([fileId])
+  @@index([edgeNodeId])
+  @@index([status])                                     // Fast query for pending/failed jobs (worker polling)
+  @@map("replication_status")
 }
