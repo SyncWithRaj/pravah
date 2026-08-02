@@ -372,6 +372,7 @@ export class UploadService {
         eventType:
           nextVersionNumber > 1 ? 'file.version_created' : 'file.uploaded',
         fileId: updatedFile.id,
+        versionId: version.id,
         ownerId: updatedFile.ownerId,
         objectKey: destinationKey,
         bucket: updatedFile.bucketName,

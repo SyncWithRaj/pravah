@@ -2,6 +2,7 @@ export interface FileUploadedEvent {
   eventId: string;
   eventType: 'file.uploaded' | 'file.version_created';
   fileId: string;
+  versionId: string;
   ownerId: string;
   objectKey: string;
   bucket: string;

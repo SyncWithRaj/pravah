@@ -14,6 +14,15 @@ export class ReplicationController {
    */
   @MessagePattern('file.uploaded')
   async handleFileUploaded(@Payload() message: unknown) {
+    return this.processFileEvent(message);
+  }
+
+  @MessagePattern('file.version_created')
+  async handleFileVersionCreated(@Payload() message: unknown) {
+    return this.processFileEvent(message);
+  }
+
+  private async processFileEvent(message: unknown) {
     let fileId: string | undefined;
     let versionId: string | undefined;
     let storagePath: string | undefined;
@@ -26,7 +35,7 @@ export class ReplicationController {
         versionId =
           typeof msg.versionId === 'string' ? msg.versionId : undefined;
         storagePath =
-          typeof msg.storagePath === 'string' ? msg.storagePath : undefined;
+          typeof msg.objectKey === 'string' ? msg.objectKey : undefined;
       } else if (typeof msg.value === 'object' && msg.value !== null) {
         const val = msg.value as Record<string, unknown>;
         if (typeof val.fileId === 'string') {
@@ -34,7 +43,7 @@ export class ReplicationController {
           versionId =
             typeof val.versionId === 'string' ? val.versionId : undefined;
           storagePath =
-            typeof val.storagePath === 'string' ? val.storagePath : undefined;
+            typeof val.objectKey === 'string' ? val.objectKey : undefined;
         }
       }
     }
