@@ -41,4 +41,20 @@ export class KafkaService implements OnModuleInit {
   emitCacheAccess(event: CacheAccessEvent) {
     this.kafkaClient.emit('cache.access', event);
   }
+
+  /**
+   * Emits the edge.health_changed event when a node transitions status.
+   * Consumed by: Replication Service, Routing Layer, Admin Dashboard.
+   */
+  emitEdgeHealthChanged(edgeId: string, oldStatus: string, newStatus: string) {
+    this.kafkaClient.emit('edge.health_changed', {
+      edgeId,
+      oldStatus,
+      newStatus,
+      timestamp: new Date().toISOString(),
+    });
+    this.logger.log(
+      `Emitted edge.health_changed: ${edgeId} ${oldStatus} -> ${newStatus}`,
+    );
+  }
 }

@@ -10,6 +10,7 @@ import { DownloadModule } from './download/download.module';
 import { MetadataModule } from './metadata/metadata.module';
 import { KafkaModule } from './common/kafka/kafka.module';
 import { EdgeCacheModule } from './common/edge-cache/edge-cache.module';
+import { HealthCheckModule } from './common/health-check/health-check.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { EdgeCacheModule } from './common/edge-cache/edge-cache.module';
     MinioModule,
     KafkaModule,
     EdgeCacheModule,
+    HealthCheckModule,
 
     AuthModule,
     UploadModule,
