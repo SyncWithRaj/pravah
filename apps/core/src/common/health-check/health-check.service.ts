@@ -6,7 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { KafkaService } from '../kafka/kafka.service';
 import { EdgeNodeStatus } from '@prisma/client';
 
-interface EdgeNodeRecord {
+export interface EdgeNodeRecord {
   id: string;
   name: string;
   region: string;
