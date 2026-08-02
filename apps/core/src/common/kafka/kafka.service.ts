@@ -57,4 +57,25 @@ export class KafkaService implements OnModuleInit {
       `Emitted edge.health_changed: ${edgeId} ${oldStatus} -> ${newStatus}`,
     );
   }
+
+  /**
+   * Emits replication status events.
+   */
+  emitReplicationStatusChanged(
+    fileId: string,
+    edgeNodeId: string,
+    status: string,
+    attempts: number,
+  ) {
+    this.kafkaClient.emit('replication.status_changed', {
+      fileId,
+      edgeNodeId,
+      status,
+      attempts,
+      timestamp: new Date().toISOString(),
+    });
+    this.logger.log(
+      `Emitted replication.status_changed: ${fileId} -> ${edgeNodeId} (${status})`,
+    );
+  }
 }

@@ -11,6 +11,7 @@ import { MetadataModule } from './metadata/metadata.module';
 import { KafkaModule } from './common/kafka/kafka.module';
 import { EdgeCacheModule } from './common/edge-cache/edge-cache.module';
 import { HealthCheckModule } from './common/health-check/health-check.module';
+import { ReplicationModule } from './replication/replication.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { HealthCheckModule } from './common/health-check/health-check.module';
     KafkaModule,
     EdgeCacheModule,
     HealthCheckModule,
+    ReplicationModule,
 
     AuthModule,
     UploadModule,
