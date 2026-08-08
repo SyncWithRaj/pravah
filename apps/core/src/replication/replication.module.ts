@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ReplicationService } from './replication.service';
-import { ReplicationProcessor } from './replication.processor';
 import { ReplicationController } from './replication.controller';
 import { KafkaModule } from '../common/kafka/kafka.module';
 import { PrismaModule } from '../prisma/prisma.module';

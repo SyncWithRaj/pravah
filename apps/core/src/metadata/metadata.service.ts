@@ -180,17 +180,19 @@ export class MetadataService {
   async findInternalFile(fileId: string) {
     const file = await this.prisma.file.findUnique({
       where: { id: fileId },
-      include: { currentVersion: true }
+      include: { currentVersion: true },
     });
     if (!file) throw new NotFoundException('File not found');
 
     return {
       ownerId: file.ownerId,
       mimeType: file.mimeType,
-      currentVersion: file.currentVersion ? {
-        checksum: file.currentVersion.checksum,
-        size: file.currentVersion.size.toString(),
-      } : null,
+      currentVersion: file.currentVersion
+        ? {
+            checksum: file.currentVersion.checksum,
+            size: file.currentVersion.size.toString(),
+          }
+        : null,
     };
   }
 }

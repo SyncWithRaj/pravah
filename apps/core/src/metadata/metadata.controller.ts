@@ -55,7 +55,6 @@ export class MetadataController {
 // we must move this to a separate controller or bypass the guard.
 // Actually, let's create a new InternalMetadataController to avoid guard issues.
 
-
 @Controller('internal/metadata')
 export class InternalMetadataController {
   constructor(private readonly metadataService: MetadataService) {}
@@ -65,7 +64,10 @@ export class InternalMetadataController {
     @Param('fileId') fileId: string,
     @Param('version') version: string,
   ) {
-    return this.metadataService.findInternalVersion(fileId, parseInt(version, 10));
+    return this.metadataService.findInternalVersion(
+      fileId,
+      parseInt(version, 10),
+    );
   }
 
   @Get('files/:fileId')

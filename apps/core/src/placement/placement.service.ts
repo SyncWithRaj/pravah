@@ -24,7 +24,11 @@ export class PlacementService {
    *   5. Rank by Haversine distance from requesting edge
    *   6. Return combined placement response
    */
-  async getPlacement(fileId: string, versionNumber: number, requestingEdgeId: string) {
+  async getPlacement(
+    fileId: string,
+    versionNumber: number,
+    requestingEdgeId: string,
+  ) {
     // 1. Fetch file metadata
     const file = await this.prisma.file.findUnique({
       where: { id: fileId },
