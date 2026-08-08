@@ -60,6 +60,27 @@ export class DownloadService {
     return cacheablePrefixes.some((prefix) => mimeType.startsWith(prefix));
   }
 
+  async getCurrentVersion(userId: string, fileId: string): Promise<number> {
+    const file = await this.prisma.file.findUnique({
+      where: { id: fileId },
+      include: { currentVersion: true },
+    });
+
+    if (!file) {
+      throw new NotFoundException('File not found');
+    }
+
+    if (file.ownerId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    if (!file.currentVersion) {
+      throw new NotFoundException('File has no versions');
+    }
+
+    return file.currentVersion.versionNumber;
+  }
+
   /**
    * Helper to format a cache hit into a DownloadResult.
    */
