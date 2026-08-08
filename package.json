@@ -6,6 +6,8 @@
     "edge": "pnpm --filter edge start:dev",
     "format": "pnpm -r format",
     "lint": "pnpm -r lint",
-    "fix": "pnpm -r format && pnpm -r lint"
+    "fix": "pnpm -r format && pnpm -r lint",
+    "build": "pnpm -r build",
+    "build:all": "pnpm run fix && pnpm run build"
   }
 }
