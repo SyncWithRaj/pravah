@@ -12,11 +12,6 @@ jobs:
   build-and-test:
     runs-on: ubuntu-latest
 
-    # Set working directory to core app since there is no root package.json
-    defaults:
-      run:
-        working-directory: ./apps/core
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -31,16 +26,16 @@ jobs:
         with:
           node-version: '22'
           cache: 'pnpm'
-          cache-dependency-path: './apps/core/pnpm-lock.yaml'
+          cache-dependency-path: './pnpm-lock.yaml'
 
       - name: Install Dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma Client
-        run: npx prisma generate
+        run: pnpm --filter core exec prisma generate
 
-      - name: Run Linter
-        run: pnpm run lint
+      - name: Run Linter & Formatter
+        run: pnpm run fix
 
       - name: Build Application
         run: pnpm run build
