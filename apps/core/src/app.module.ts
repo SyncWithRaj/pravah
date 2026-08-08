@@ -21,7 +21,7 @@ import { PlacementModule } from './placement/placement.module';
     // Load .env file and make ConfigService available globally
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: '../../.env',
     }),
 
     // Global Prisma DB connection

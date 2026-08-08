@@ -9,6 +9,7 @@ import { HeartbeatModule } from './heartbeat/heartbeat.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: '../../.env',
     }),
     ScheduleModule.forRoot(),
     ContentModule,
