@@ -3,6 +3,9 @@
   "private": true,
   "scripts": {
     "core": "pnpm --filter core start:dev",
-    "edge": "pnpm --filter edge start:dev"
+    "edge": "pnpm --filter edge start:dev",
+    "format": "pnpm -r format",
+    "lint": "pnpm -r lint",
+    "fix": "pnpm -r format && pnpm -r lint"
   }
 }
