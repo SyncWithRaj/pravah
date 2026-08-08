@@ -6,6 +6,8 @@ settings:
 
 importers:
 
+  .: {}
+
   apps/core:
     dependencies:
       '@aws-sdk/client-s3':
