@@ -92,6 +92,14 @@ export class ReplicationService {
       `Dispatching replication for file ${fileId} to ${targetNodes.length} edge nodes (Factor: ${REPLICATION_FACTOR})`,
     );
 
+    // 5. Phase 5C Bugfix: We need the integer versionNumber for the Edge to cache correctly
+    const fileVersion = await this.prisma.fileVersion.findUnique({
+      where: { id: versionId },
+      select: { versionNumber: true },
+    });
+
+    const versionStr = fileVersion ? fileVersion.versionNumber.toString() : '1';
+
     for (const node of targetNodes) {
       // Create or update the replication status record
       await this.prisma.replicationStatus.upsert({
@@ -116,7 +124,7 @@ export class ReplicationService {
       // Push the job into BullMQ with exponential backoff + jitter
       const jobData: ReplicationJobData = {
         fileId,
-        versionId,
+        versionId: versionStr, // <--- Now passes integer string (e.g. "1") instead of UUID
         edgeNodeId: node.id,
         edgeEndpointUrl: node.endpointUrl,
         storagePath,

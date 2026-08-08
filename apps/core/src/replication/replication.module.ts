@@ -37,7 +37,7 @@ import { EdgeCacheModule } from '../common/edge-cache/edge-cache.module';
     }),
   ],
   controllers: [ReplicationController],
-  providers: [ReplicationService, ReplicationProcessor],
+  providers: [ReplicationService],
   exports: [ReplicationService],
 })
 export class ReplicationModule {}
