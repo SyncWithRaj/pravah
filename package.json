@@ -1,0 +1,8 @@
+{
+  "name": "pravah-workspace",
+  "private": true,
+  "scripts": {
+    "core": "pnpm --filter core start:dev",
+    "edge": "pnpm --filter edge start:dev"
+  }
+}
