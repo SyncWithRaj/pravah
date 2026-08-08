@@ -3,7 +3,8 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { HealthCheckService } from '../common/health-check/health-check.service';
-import { ReplicationJobStatus, Prisma } from '@prisma/client';
+import { HashRing } from '../common/replication/hash-ring';
+import { ReplicationJobStatus, Prisma, EdgeNodeStatus } from '@prisma/client';
 
 type ReplicationStatusWithNode = Prisma.ReplicationStatusGetPayload<{
   include: { edgeNode: true };
@@ -24,6 +25,7 @@ export interface ReplicationJobData {
 @Injectable()
 export class ReplicationService {
   private readonly logger = new Logger(ReplicationService.name);
+  private readonly hashRing = new HashRing();
 
   constructor(
     @InjectQueue('replication.normal')
@@ -55,15 +57,39 @@ export class ReplicationService {
       return;
     }
 
-    // Limit to 3 nodes (Replication Factor) to save storage.
-    // In Phase 5, this will be replaced with Consistent Hashing.
+    // Sync HashRing with the static topology (all nodes)
+    const allNodes = this.healthCheckService.getAllNodes();
+    this.hashRing.syncTopology(allNodes.map((n) => n.id));
+
+    // Phase 5B: Find responsible replicas via Consistent Hashing Ring
     const REPLICATION_FACTOR = 3;
-    const targetNodes = healthyNodes
-      .sort(() => 0.5 - Math.random()) // Simple shuffle for now
-      .slice(0, REPLICATION_FACTOR);
+    const responsibleNodeIds = this.hashRing.getNodes(
+      fileId,
+      REPLICATION_FACTOR,
+    );
+
+    // Filter responsible nodes against LIVE HEALTHY availability
+    const targetNodes = allNodes.filter(
+      (node) =>
+        responsibleNodeIds.includes(node.id) &&
+        node.status === EdgeNodeStatus.HEALTHY,
+    );
+
+    if (targetNodes.length < REPLICATION_FACTOR) {
+      this.logger.warn(
+        `[ReplicationWarning] desired=${REPLICATION_FACTOR}, actual=${targetNodes.length} for file ${fileId}`,
+      );
+    }
+
+    if (targetNodes.length === 0) {
+      this.logger.error(
+        `Failed to dispatch replication for file ${fileId} - no responsible replicas are healthy`,
+      );
+      return;
+    }
 
     this.logger.log(
-      `Dispatching replication for file ${fileId} to ${targetNodes.length} edge nodes (Factor: 3)`,
+      `Dispatching replication for file ${fileId} to ${targetNodes.length} edge nodes (Factor: ${REPLICATION_FACTOR})`,
     );
 
     for (const node of targetNodes) {
