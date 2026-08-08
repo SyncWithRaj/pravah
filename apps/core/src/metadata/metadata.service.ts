@@ -156,4 +156,41 @@ export class MetadataService {
 
     return { success: true, message: 'File deleted completely' };
   }
+
+  async findInternalVersion(fileId: string, versionNumber: number) {
+    const file = await this.prisma.file.findUnique({
+      where: { id: fileId },
+    });
+    if (!file) throw new NotFoundException('File not found');
+
+    const fileVersion = await this.prisma.fileVersion.findFirst({
+      where: { fileId, versionNumber },
+    });
+    if (!fileVersion) throw new NotFoundException('Version not found');
+
+    return {
+      storagePath: fileVersion.storagePath,
+      size: fileVersion.size.toString(),
+      checksum: fileVersion.checksum,
+      mimeType: file.mimeType,
+      ownerId: file.ownerId,
+    };
+  }
+
+  async findInternalFile(fileId: string) {
+    const file = await this.prisma.file.findUnique({
+      where: { id: fileId },
+      include: { currentVersion: true }
+    });
+    if (!file) throw new NotFoundException('File not found');
+
+    return {
+      ownerId: file.ownerId,
+      mimeType: file.mimeType,
+      currentVersion: file.currentVersion ? {
+        checksum: file.currentVersion.checksum,
+        size: file.currentVersion.size.toString(),
+      } : null,
+    };
+  }
 }

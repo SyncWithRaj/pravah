@@ -1,9 +1,10 @@
 import { Module } from '@nestjs/common';
-import { MetadataController } from './metadata.controller';
 import { MetadataService } from './metadata.service';
+import { MetadataController, InternalMetadataController } from './metadata.controller';
 
 @Module({
-  controllers: [MetadataController],
+  controllers: [MetadataController, InternalMetadataController],
   providers: [MetadataService],
+  exports: [MetadataService],
 })
 export class MetadataModule {}

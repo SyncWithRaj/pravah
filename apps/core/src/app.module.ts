@@ -14,6 +14,7 @@ import { HealthCheckModule } from './common/health-check/health-check.module';
 import { ReplicationModule } from './replication/replication.module';
 import { RoutingModule } from './common/routing/routing.module';
 import { EdgeContentModule } from './edge-content/edge-content.module';
+import { PlacementModule } from './placement/placement.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { EdgeContentModule } from './edge-content/edge-content.module';
     UploadModule,
     DownloadModule,
     MetadataModule,
+    PlacementModule,
   ],
   controllers: [AppController],
   providers: [AppService],
