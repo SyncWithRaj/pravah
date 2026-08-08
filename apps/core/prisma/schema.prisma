@@ -250,6 +250,8 @@ model EdgeNode {
   name          String         @unique                  // Human-readable identifier e.g. "edge-us-east-1"
   region        String                                  // Geographic region e.g. "us-east-1", "eu-west-1"
   endpointUrl   String                                  // Base URL of the edge node e.g. "https://edge-1.pravah.cdn"
+  latitude      Float          @default(0)
+  longitude     Float          @default(0)
   status        EdgeNodeStatus @default(HEALTHY)        // Current health status
   lastHeartbeat DateTime?                               // Last time a heartbeat was received (updated from Redis periodically)
 
