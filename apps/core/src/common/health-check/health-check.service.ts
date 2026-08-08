@@ -11,6 +11,8 @@ export interface EdgeNodeRecord {
   name: string;
   region: string;
   endpointUrl: string;
+  latitude: number;
+  longitude: number;
   status: EdgeNodeStatus;
   missedCycles: number;
 }
@@ -147,6 +149,8 @@ export class HealthCheckService implements OnModuleInit {
         name: node.name,
         region: node.region,
         endpointUrl: node.endpointUrl,
+        latitude: node.latitude,
+        longitude: node.longitude,
         status: node.status,
         missedCycles: existing?.missedCycles ?? 0,
       });

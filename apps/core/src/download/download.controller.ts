@@ -13,11 +13,15 @@ import { DownloadService, DownloadResult } from './download.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '@prisma/client';
+import { RoutingService } from '../common/routing/routing.service';
 
 @UseGuards(JwtAuthGuard)
 @Controller('download')
 export class DownloadController {
-  constructor(private readonly downloadService: DownloadService) {}
+  constructor(
+    private readonly downloadService: DownloadService,
+    private readonly routingService: RoutingService,
+  ) {}
 
   /**
    * Helper to apply standardized CDN headers
@@ -60,6 +64,29 @@ export class DownloadController {
   ) {
     const rangeHeader = req.headers.range;
     const ifNoneMatch = req.headers['if-none-match'];
+    const clientRegion = req.headers['x-test-client-region'] as string;
+
+    const routingDecision = this.routingService.selectBestEdge(clientRegion);
+
+    if (routingDecision) {
+      const { edge, distanceKm, strategy } = routingDecision;
+      // Fetch current version to construct correct redirect URL
+      const currentVersion = await this.downloadService.getCurrentVersion(
+        user.id,
+        fileId,
+      );
+      const redirectUrl = `${edge.endpointUrl}/api/v1/edge/content/${fileId}?v=${currentVersion}`;
+
+      res.setHeader('X-CDN-Edge', edge.name);
+      res.setHeader('X-CDN-Region', edge.region);
+      res.setHeader(
+        'X-CDN-Distance-Km',
+        distanceKm === null ? 'N/A' : distanceKm.toString(),
+      );
+      res.setHeader('X-CDN-Strategy', strategy);
+
+      return res.redirect(302, redirectUrl);
+    }
 
     const result = await this.downloadService.downloadCurrentVersion(
       user.id,
@@ -112,6 +139,24 @@ export class DownloadController {
   ) {
     const rangeHeader = req.headers.range;
     const ifNoneMatch = req.headers['if-none-match'];
+    const clientRegion = req.headers['x-test-client-region'] as string;
+
+    const routingDecision = this.routingService.selectBestEdge(clientRegion);
+
+    if (routingDecision) {
+      const { edge, distanceKm, strategy } = routingDecision;
+      const redirectUrl = `${edge.endpointUrl}/api/v1/edge/content/${fileId}?v=${versionNumber}`;
+
+      res.setHeader('X-CDN-Edge', edge.name);
+      res.setHeader('X-CDN-Region', edge.region);
+      res.setHeader(
+        'X-CDN-Distance-Km',
+        distanceKm === null ? 'N/A' : distanceKm.toString(),
+      );
+      res.setHeader('X-CDN-Strategy', strategy);
+
+      return res.redirect(302, redirectUrl);
+    }
 
     const result = await this.downloadService.downloadSpecificVersion(
       user.id,
