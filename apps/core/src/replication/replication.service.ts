@@ -34,15 +34,6 @@ export class ReplicationService {
     private readonly healthCheckService: HealthCheckService,
   ) {}
 
-  /**
-   * Dispatches replication jobs for a newly uploaded file.
-   * Called by the Kafka consumer when a 'file.uploaded' event arrives.
-   *
-   * Flow:
-   *   1. Get all HEALTHY edge nodes from the in-memory map
-   *   2. Create PENDING rows in ReplicationStatus (DB)
-   *   3. Push jobs into the BullMQ 'replication.normal' queue
-   */
   async dispatchReplication(
     fileId: string,
     versionId: string,
@@ -57,18 +48,15 @@ export class ReplicationService {
       return;
     }
 
-    // Sync HashRing with the static topology (all nodes)
     const allNodes = this.healthCheckService.getAllNodes();
     this.hashRing.syncTopology(allNodes.map((n) => n.id));
 
-    // Phase 5B: Find responsible replicas via Consistent Hashing Ring
     const REPLICATION_FACTOR = 3;
     const responsibleNodeIds = this.hashRing.getNodes(
       fileId,
       REPLICATION_FACTOR,
     );
 
-    // Filter responsible nodes against LIVE HEALTHY availability
     const targetNodes = allNodes.filter(
       (node) =>
         responsibleNodeIds.includes(node.id) &&
@@ -92,7 +80,6 @@ export class ReplicationService {
       `Dispatching replication for file ${fileId} to ${targetNodes.length} edge nodes (Factor: ${REPLICATION_FACTOR})`,
     );
 
-    // 5. Phase 5C Bugfix: We need the integer versionNumber for the Edge to cache correctly
     const fileVersion = await this.prisma.fileVersion.findUnique({
       where: { id: versionId },
       select: { versionNumber: true },
@@ -101,7 +88,6 @@ export class ReplicationService {
     const versionStr = fileVersion ? fileVersion.versionNumber.toString() : '1';
 
     for (const node of targetNodes) {
-      // Create or update the replication status record
       await this.prisma.replicationStatus.upsert({
         where: {
           fileId_edgeNodeId: { fileId, edgeNodeId: node.id },
@@ -121,10 +107,9 @@ export class ReplicationService {
         },
       });
 
-      // Push the job into BullMQ with exponential backoff + jitter
       const jobData: ReplicationJobData = {
         fileId,
-        versionId: versionStr, // <--- Now passes integer string (e.g. "1") instead of UUID
+        versionId: versionStr,
         edgeNodeId: node.id,
         edgeEndpointUrl: node.endpointUrl,
         storagePath,
@@ -132,13 +117,13 @@ export class ReplicationService {
 
       await this.replicationQueue.add('replicate-file', jobData, {
         attempts: 3,
-        priority: 5, // Normal priority. Critical files could use priority: 1 later.
+        priority: 5,
         backoff: {
           type: 'exponential',
-          delay: 2000, // Base delay: 2s, then 4s, then 8s
+          delay: 2000,
         },
         removeOnComplete: true,
-        removeOnFail: false, // Keep failed jobs for DLQ inspection
+        removeOnFail: false,
       });
 
       this.logger.log(
@@ -147,9 +132,6 @@ export class ReplicationService {
     }
   }
 
-  /**
-   * Returns the replication status for a specific file across all edges.
-   */
   async getReplicationStatus(
     fileId: string,
   ): Promise<ReplicationStatusWithNode[]> {
@@ -160,9 +142,6 @@ export class ReplicationService {
     });
   }
 
-  /**
-   * Returns all failed replication jobs (DLQ inspection).
-   */
   async getFailedJobs(): Promise<FailedJobWithNodeAndFile[]> {
     return this.prisma.replicationStatus.findMany({
       where: { status: ReplicationJobStatus.FAILED },
@@ -171,9 +150,6 @@ export class ReplicationService {
     });
   }
 
-  /**
-   * Retries a failed replication job by re-dispatching it to the queue.
-   */
   async retryFailedJob(replicationId: string): Promise<void> {
     const record = await this.prisma.replicationStatus.findUnique({
       where: { id: replicationId },
@@ -190,7 +166,6 @@ export class ReplicationService {
       );
     }
 
-    // Find the latest version's storage path
     const latestVersion = await this.prisma.fileVersion.findFirst({
       where: { fileId: record.fileId },
       orderBy: { versionNumber: 'desc' },
@@ -200,7 +175,6 @@ export class ReplicationService {
       throw new Error(`No version found for file ${record.fileId}`);
     }
 
-    // Reset and re-dispatch
     await this.prisma.replicationStatus.update({
       where: { id: replicationId },
       data: {

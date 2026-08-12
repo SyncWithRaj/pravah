@@ -7,20 +7,16 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
 
-  // Global validation pipe — auto-validates all incoming DTOs
   app.useGlobalPipes(
     new ValidationPipe({
-      whitelist: true, // Strip unknown fields from requests
-      forbidNonWhitelisted: true, // Throw error if unknown fields sent
-      transform: true, // Auto-transform payloads to DTO class instances
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
     }),
   );
 
-  // Global API prefix — all routes will be /api/v1/...
   app.setGlobalPrefix('api/v1');
 
-  // Connect to Kafka Microservice for receiving cluster events
-  // We use a random consumer group ID so EVERY edge node receives the broadcast!
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.KAFKA,
     options: {

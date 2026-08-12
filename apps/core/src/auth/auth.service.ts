@@ -21,7 +21,6 @@ export class AuthService {
   async register(registerDto: RegisterDto) {
     const { email, username, password } = registerDto;
 
-    // Check if user already exists
     const existingUser = await this.prisma.user.findFirst({
       where: {
         OR: [{ email }, { username }],
@@ -35,10 +34,8 @@ export class AuthService {
       throw new ConflictException('Username already taken');
     }
 
-    // Hash the password with argon2
     const hashedPassword = await argon2.hash(password);
 
-    // Save user to database
     const user = await this.prisma.user.create({
       data: {
         email,
@@ -46,8 +43,6 @@ export class AuthService {
         passwordHash: hashedPassword,
       },
     });
-
-    // Strip passwordHash before returning
 
     const { passwordHash, ...userWithoutPassword } = user;
     void passwordHash;
@@ -57,7 +52,6 @@ export class AuthService {
   async login(loginDto: LoginDto) {
     const { identifier, password } = loginDto;
 
-    // Find user by email or username
     const user = await this.prisma.user.findFirst({
       where: {
         OR: [{ email: identifier }, { username: identifier }],
@@ -68,14 +62,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Verify argon2 hash
     const isPasswordValid = await argon2.verify(user.passwordHash, password);
 
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Generate Access Token and Refresh Token
     const payload = { sub: user.id, email: user.email };
 
     const [access_token, refresh_token] = await Promise.all([
@@ -102,7 +94,6 @@ export class AuthService {
 
   async refreshToken(refreshToken: string) {
     try {
-      // Verify the refresh token
       const payload = await this.jwtService.verifyAsync<{
         sub: string;
         email: string;
@@ -110,7 +101,6 @@ export class AuthService {
         secret: this.configService.get<string>('JWT_REFRESH_SECRET'),
       });
 
-      // Find the user to ensure they still exist (and aren't disabled/deleted)
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
       });
@@ -119,7 +109,6 @@ export class AuthService {
         throw new UnauthorizedException('User no longer exists');
       }
 
-      // Generate a brand new token pair
       const newPayload = { sub: user.id, email: user.email };
       const [new_access_token, new_refresh_token] = await Promise.all([
         this.jwtService.signAsync(newPayload, {

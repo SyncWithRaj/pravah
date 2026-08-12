@@ -50,12 +50,12 @@ export class MinioService implements OnModuleInit {
 
     this.s3Client = new S3Client({
       endpoint: endpointUrl,
-      region: 'us-east-1', // Default dummy region for MinIO
+      region: 'us-east-1',
       credentials: {
         accessKeyId: accessKey,
         secretAccessKey: secretKey,
       },
-      forcePathStyle: true, // Mandatory for MinIO
+      forcePathStyle: true,
     });
   }
 
@@ -63,9 +63,6 @@ export class MinioService implements OnModuleInit {
     await this.ensureBucketExists();
   }
 
-  /**
-   * Ensures the configured bucket exists in MinIO upon module startup.
-   */
   private async ensureBucketExists(): Promise<void> {
     try {
       await this.s3Client.send(
@@ -92,9 +89,6 @@ export class MinioService implements OnModuleInit {
     }
   }
 
-  /**
-   * Uploads a single buffer chunk to MinIO.
-   */
   async uploadChunk(
     key: string,
     buffer: Buffer,
@@ -112,15 +106,11 @@ export class MinioService implements OnModuleInit {
     return key;
   }
 
-  /**
-   * Assembles multiple chunk objects into a single file directly on MinIO server using Multipart Upload & Part Copy.
-   */
   async assembleChunks(
     chunkKeys: string[],
     destinationKey: string,
     contentType?: string,
   ): Promise<string> {
-    // 1. Initiate Multipart Upload for destination object
     const initRes = await this.s3Client.send(
       new CreateMultipartUploadCommand({
         Bucket: this.bucketName,
@@ -137,7 +127,6 @@ export class MinioService implements OnModuleInit {
     const completedParts: { ETag: string; PartNumber: number }[] = [];
 
     try {
-      // 2. Copy each chunk into the multipart upload
       for (let i = 0; i < chunkKeys.length; i++) {
         const partNumber = i + 1;
         const sourceKey = chunkKeys[i];
@@ -164,7 +153,6 @@ export class MinioService implements OnModuleInit {
         });
       }
 
-      // 3. Complete Multipart Upload
       await this.s3Client.send(
         new CompleteMultipartUploadCommand({
           Bucket: this.bucketName,
@@ -203,9 +191,6 @@ export class MinioService implements OnModuleInit {
     }
   }
 
-  /**
-   * Fallback assembly for small test files (< 5MB per chunk) where S3 Multipart Upload is rejected.
-   */
   private async assembleChunksInMemory(
     chunkKeys: string[],
     destinationKey: string,
@@ -231,27 +216,21 @@ export class MinioService implements OnModuleInit {
     return destinationKey;
   }
 
-  /**
-   * Assembles multiple chunks, streams them through Gzip, and uploads back to MinIO.
-   * Returns the final compressed size.
-   */
   async assembleAndCompressChunks(
     chunkKeys: string[],
     destinationKey: string,
     contentType?: string,
   ): Promise<{ destinationKey: string; compressedSize: number }> {
-    // 1. Create a readable stream that pulls all chunks sequentially
     let currentChunkIndex = 0;
     let currentStream: Readable | null = null;
 
-    // Capture getObjectStream as a bound reference to avoid aliasing 'this'
     const fetchChunkStream = (key: string) => this.getObjectStream(key);
 
     const chunkReadableStream = new Readable({
       read() {
         if (!currentStream) {
           if (currentChunkIndex >= chunkKeys.length) {
-            this.push(null); // End of stream
+            this.push(null);
             return;
           }
           fetchChunkStream(chunkKeys[currentChunkIndex])
@@ -268,7 +247,7 @@ export class MinioService implements OnModuleInit {
 
               currentStream.on('end', () => {
                 currentStream = null;
-                // Trigger next chunk
+
                 this._read(0);
               });
 
@@ -285,17 +264,14 @@ export class MinioService implements OnModuleInit {
       },
     });
 
-    // 2. Pipe into zlib Gzip stream
     const gzipStream = zlib.createGzip();
     const compressedStream = chunkReadableStream.pipe(gzipStream);
 
-    // Track size
     let compressedSize = 0;
     compressedStream.on('data', (chunk: Buffer) => {
       compressedSize += chunk.length;
     });
 
-    // 3. Upload stream using @aws-sdk/lib-storage
     const upload = new Upload({
       client: this.s3Client,
       params: {
@@ -316,9 +292,6 @@ export class MinioService implements OnModuleInit {
     return { destinationKey, compressedSize };
   }
 
-  /**
-   * Deletes multiple objects (e.g. temporary chunks) from MinIO.
-   */
   async deleteObjects(keys: string[]): Promise<void> {
     if (!keys || keys.length === 0) return;
 
@@ -332,9 +305,6 @@ export class MinioService implements OnModuleInit {
     );
   }
 
-  /**
-   * Retrieves an object stream from MinIO (for downloading/processing).
-   */
   async getObjectStream(key: string): Promise<Readable> {
     const res = await this.s3Client.send(
       new GetObjectCommand({
@@ -346,9 +316,6 @@ export class MinioService implements OnModuleInit {
     return res.Body as Readable;
   }
 
-  /**
-   * Gets object metadata (size, content-type) from MinIO without downloading the file.
-   */
   async getObjectMetadata(
     key: string,
   ): Promise<{ contentLength: number; contentType: string; etag?: string }> {
@@ -366,10 +333,6 @@ export class MinioService implements OnModuleInit {
     };
   }
 
-  /**
-   * Generates a pre-signed URL for direct download from MinIO.
-   * The URL is time-limited and self-authenticating — no JWT needed to use it.
-   */
   async generateSignedUrl(
     key: string,
     expiresInSeconds = 900,
@@ -383,7 +346,6 @@ export class MinioService implements OnModuleInit {
         : undefined,
     });
 
-    // Cast needed due to AWS SDK internal version mismatch between client-s3 and s3-request-presigner
     const client = this.s3Client as unknown as Parameters<
       typeof getSignedUrl
     >[0];
@@ -393,10 +355,6 @@ export class MinioService implements OnModuleInit {
     });
   }
 
-  /**
-   * Retrieves a partial object stream from MinIO using an HTTP Range header.
-   * Used for video seeking / scrubbing (HTTP 206 Partial Content).
-   */
   async getObjectStreamWithRange(
     key: string,
     range: string,

@@ -8,10 +8,6 @@ export class ReplicationController {
 
   constructor(private readonly replicationService: ReplicationService) {}
 
-  /**
-   * Kafka consumer for file upload events.
-   * This is where the replication process is kicked off.
-   */
   @MessagePattern('file.uploaded')
   async handleFileUploaded(@Payload() message: unknown) {
     return this.processFileEvent(message);
@@ -27,7 +23,6 @@ export class ReplicationController {
     let versionId: string | undefined;
     let storagePath: string | undefined;
 
-    // Handle both plain objects and KafkaMessage payloads
     if (typeof message === 'object' && message !== null) {
       const msg = message as Record<string, unknown>;
       if (typeof msg.fileId === 'string') {
@@ -66,10 +61,6 @@ export class ReplicationController {
     }
   }
 
-  /**
-   * GET /admin/replication/status/:fileId
-   * Returns the replication status for a specific file.
-   */
   @Get('status/:fileId')
   async getStatus(@Param('fileId') fileId: string) {
     const status = await this.replicationService.getReplicationStatus(fileId);
@@ -84,10 +75,6 @@ export class ReplicationController {
     };
   }
 
-  /**
-   * GET /admin/replication/failed
-   * Returns all failed replication jobs (DLQ inspection).
-   */
   @Get('failed')
   async getFailedJobs() {
     const failedJobs = await this.replicationService.getFailedJobs();
@@ -97,10 +84,6 @@ export class ReplicationController {
     };
   }
 
-  /**
-   * POST /admin/replication/retry
-   * Retries a specific failed replication job.
-   */
   @Post('retry')
   async retryJob(@Body('replicationId') replicationId: string) {
     if (!replicationId) {

@@ -12,24 +12,11 @@ export class PlacementService {
     private readonly healthCheck: HealthCheckService,
   ) {}
 
-  /**
-   * Returns file metadata + responsible replicas ranked by distance
-   * from the requesting edge node.
-   *
-   * Flow:
-   *   1. Fetch file + version metadata from Prisma
-   *   2. Sync HashRing with ALL nodes (topology must be stable regardless of health)
-   *   3. Get responsible replica set from HashRing
-   *   4. Filter out unhealthy nodes and the requesting edge
-   *   5. Rank by Haversine distance from requesting edge
-   *   6. Return combined placement response
-   */
   async getPlacement(
     fileId: string,
     versionNumber: number,
     requestingEdgeId: string,
   ) {
-    // 1. Fetch file metadata
     const file = await this.prisma.file.findUnique({
       where: { id: fileId },
     });
@@ -46,17 +33,13 @@ export class PlacementService {
       throw new NotFoundException('Version not found');
     }
 
-    // 2. Sync HashRing with ALL known nodes (not just healthy ones)
-    //    The HashRing determines permanent placement regardless of health state.
     const allNodes = this.healthCheck.getAllNodes();
     const hashRing = new HashRing();
     hashRing.syncTopology(allNodes.map((n) => n.id));
 
-    // 3. Get responsible replicas (REPLICATION_FACTOR = 3)
     const REPLICATION_FACTOR = 3;
     const responsibleNodeIds = hashRing.getNodes(fileId, REPLICATION_FACTOR);
 
-    // 4. Filter: keep only HEALTHY responsible replicas, exclude requesting edge
     const healthyResponsibleNodes = allNodes.filter(
       (node) =>
         responsibleNodeIds.includes(node.id) &&
@@ -64,7 +47,6 @@ export class PlacementService {
         node.id !== requestingEdgeId,
     );
 
-    // 5. Calculate Haversine distance from requesting edge to each candidate
     const requestingEdge = allNodes.find((n) => n.id === requestingEdgeId);
 
     const responsibleReplicas = healthyResponsibleNodes
@@ -89,7 +71,6 @@ export class PlacementService {
       })
       .sort((a, b) => a.distanceKm - b.distanceKm);
 
-    // 6. Return combined placement response
     return {
       fileId: file.id,
       version: fileVersion.versionNumber,

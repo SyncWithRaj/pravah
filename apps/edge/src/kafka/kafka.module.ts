@@ -18,7 +18,7 @@ import { KafkaService } from './kafka.service';
                 configService.get<string>('KAFKA_BROKERS') || 'localhost:19092',
               ],
             },
-            producerOnlyMode: true, // We are only emitting events from the core API right now
+            producerOnlyMode: true, 
           },
         }),
         inject: [ConfigService],

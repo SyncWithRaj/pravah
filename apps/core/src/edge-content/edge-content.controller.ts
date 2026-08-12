@@ -38,7 +38,6 @@ export class EdgeContentController {
 
     const versionStr = version.toString();
 
-    // 1. Try serving from local Edge Cache
     const buffer = await this.edgeCacheService.getBinary(fileId, versionStr, 0);
     if (buffer) {
       this.logger.log(
@@ -51,7 +50,6 @@ export class EdgeContentController {
       `[Cache Miss] Fetching file ${fileId} v${version} from Origin`,
     );
 
-    // 2. Cache Miss - Need to fetch from MinIO and populate Edge Cache
     const file = await this.prisma.file.findUnique({
       where: { id: fileId },
     });
@@ -68,7 +66,6 @@ export class EdgeContentController {
       throw new NotFoundException(`File version not found`);
     }
 
-    // Attempt to acquire lock for cache population
     const lockValue = uuidv4();
     const acquiredLock = await this.edgeCacheService.acquireStampedeLock(
       fileId,
@@ -78,7 +75,6 @@ export class EdgeContentController {
 
     if (acquiredLock) {
       try {
-        // Fetch from MinIO
         const minioStream = await this.minioService.getObjectStream(
           fileVersion.storagePath,
         );
@@ -87,7 +83,6 @@ export class EdgeContentController {
           throw new NotFoundException('File content missing at origin');
         }
 
-        // Cache the file if < 20MB
         if (fileVersion.size <= 20 * 1024 * 1024) {
           const chunks: Buffer[] = [];
           minioStream.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -129,7 +124,6 @@ export class EdgeContentController {
             );
           });
 
-          // Create a new stream for the response because minioStream is being consumed for caching
           const responseStream = await this.minioService.getObjectStream(
             fileVersion.storagePath,
           );
@@ -151,8 +145,6 @@ export class EdgeContentController {
         throw new InternalServerErrorException('Failed to fetch from origin');
       }
     } else {
-      // Could not acquire lock, meaning another request is currently fetching it.
-      // Stream directly from origin to avoid complex waiting logic here.
       const minioStream = await this.minioService.getObjectStream(
         fileVersion.storagePath,
       );

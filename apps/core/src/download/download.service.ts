@@ -37,12 +37,9 @@ export class DownloadService {
     private readonly edgeCacheService: EdgeCacheService,
   ) {}
 
-  /**
-   * Helper to check if a file is eligible for Redis caching.
-   */
   private isCacheable(mimeType: string, size: number): boolean {
     const MAX_CACHE_SIZE =
-      this.configService.get<number>('MAX_CACHE_SIZE') || 20 * 1024 * 1024; // Default 20MB
+      this.configService.get<number>('MAX_CACHE_SIZE') || 20 * 1024 * 1024;
 
     if (size > MAX_CACHE_SIZE) {
       return false;
@@ -81,9 +78,6 @@ export class DownloadService {
     return file.currentVersion.versionNumber;
   }
 
-  /**
-   * Helper to format a cache hit into a DownloadResult.
-   */
   private formatCacheHit(
     cachedBinary: Buffer,
     metadata: {
@@ -128,15 +122,10 @@ export class DownloadService {
     };
   }
 
-  /**
-   * Determines the current active version of a file.
-   * Uses Redis as primary, falls back to Postgres on miss.
-   */
   private async resolveCurrentVersion(userId: string, fileId: string) {
     let currentVersion = await this.edgeCacheService.getCurrentVersion(fileId);
 
     if (!currentVersion) {
-      // Fallback to PostgreSQL (Source of Truth)
       const file = await this.prisma.file.findUnique({
         where: { id: fileId },
         include: { currentVersion: true },
@@ -154,18 +143,14 @@ export class DownloadService {
         throw new BadRequestException('File upload is not yet complete');
       }
 
-      currentVersion = file.currentVersionId || 'v1'; // Default if versioning not fully set up yet
+      currentVersion = file.currentVersionId || 'v1';
 
-      // Lazy load pointer back into Redis
       await this.edgeCacheService.setCurrentVersion(fileId, currentVersion);
     }
 
     return currentVersion;
   }
 
-  /**
-   * Centralized download logic handling ETag, Caching, Stampede Protection, and Range.
-   */
   async processDownload(
     userId: string,
     fileId: string,
@@ -173,16 +158,13 @@ export class DownloadService {
     ifNoneMatch?: string,
     rangeHeader?: string,
   ): Promise<DownloadResult> {
-    // 1. Check Metadata in Redis
     let metadata = await this.edgeCacheService.getMetadata(fileId, versionId);
 
     if (metadata) {
-      // DB-less Authorization
       if (metadata.ownerId !== userId) {
         throw new ForbiddenException('Access denied');
       }
 
-      // 2. Evaluate Conditional      // 3. ETag Match (304 Not Modified)
       const cleanEtag = metadata.etag.replace(/^"+|"+$/g, '');
       const cleanIfNoneMatch = ifNoneMatch
         ? ifNoneMatch.replace(/^"+|"+$/g, '')
@@ -196,7 +178,6 @@ export class DownloadService {
         };
       }
     } else {
-      // Fetch metadata from DB if missing in cache
       const versionRec = await this.prisma.fileVersion.findUnique({
         where: { id: versionId },
         include: { file: true },
@@ -228,7 +209,6 @@ export class DownloadService {
         contentEncoding: versionRec.isCompressed ? 'gzip' : undefined,
       };
 
-      // Evaluate ETag safely (stripping arbitrary extra quotes from Redis or client)
       const cleanEtag = metadata.etag.replace(/^"+|"+$/g, '');
       const cleanIfNoneMatch = ifNoneMatch
         ? ifNoneMatch.replace(/^"+|"+$/g, '')
@@ -243,7 +223,6 @@ export class DownloadService {
       }
     }
 
-    // 3. Attempt Cache Binary Fetch
     let cachedBinary = await this.edgeCacheService.getBinary(
       fileId,
       versionId,
@@ -254,7 +233,6 @@ export class DownloadService {
       return this.formatCacheHit(cachedBinary, metadata, rangeHeader);
     }
 
-    // 4. CACHE MISS -> Fetch from Origin (MinIO)
     const startTime = Date.now();
     const isEligible =
       this.isCacheable(metadata.contentType, metadata.size) && !rangeHeader;
@@ -269,7 +247,6 @@ export class DownloadService {
       );
 
       if (!locked) {
-        // Someone else is fetching. Wait for the cache.
         const cacheAppeared = await this.edgeCacheService.waitForCache(
           fileId,
           versionId,
@@ -286,7 +263,6 @@ export class DownloadService {
           }
         }
 
-        // Lock dropped (origin fetch failed) or timed out. Try to become the new leader to prevent stampede.
         locked = await this.edgeCacheService.acquireStampedeLock(
           fileId,
           versionId,
@@ -300,7 +276,6 @@ export class DownloadService {
       }
     }
 
-    // Need storage path. If we didn't hit DB earlier, we need it now.
     const versionRec = await this.prisma.fileVersion.findUnique({
       where: { id: versionId },
       include: { file: true },
@@ -325,7 +300,6 @@ export class DownloadService {
         resultStream = await this.minioService.getObjectStream(storagePath);
       }
     } catch (err) {
-      // If MinIO fetch fails instantly, leader must release the lock!
       if (locked) {
         await this.edgeCacheService.releaseStampedeLock(
           fileId,
@@ -336,12 +310,10 @@ export class DownloadService {
       throw err;
     }
 
-    // 5. Populate Cache Concurrently (if eligible and locked)
     if (locked) {
       const cacheStream = new PassThrough();
       const clientStream = new PassThrough();
 
-      // Decouple the streams so client disconnects don't kill the cache population
       resultStream.on('data', (chunk) => {
         cacheStream.write(chunk);
         clientStream.write(chunk);
@@ -365,7 +337,6 @@ export class DownloadService {
             this.logger.error(`Background cache populate failed: ${e.message}`);
           })
           .finally(() => {
-            // Guaranteed lock release by the owner
             void this.edgeCacheService.releaseStampedeLock(
               fileId,
               versionId,
@@ -384,7 +355,6 @@ export class DownloadService {
       resultStream = clientStream;
     }
 
-    // Record miss telemetry
     this.edgeCacheService.emitCacheMiss(fileId, Date.now() - startTime);
 
     return {
@@ -400,9 +370,6 @@ export class DownloadService {
     };
   }
 
-  /**
-   * Helper exposed for controllers to download current version
-   */
   async downloadCurrentVersion(
     userId: string,
     fileId: string,
@@ -419,9 +386,6 @@ export class DownloadService {
     );
   }
 
-  /**
-   * Helper exposed for controllers to download specific version
-   */
   async downloadSpecificVersion(
     userId: string,
     fileId: string,
@@ -429,7 +393,6 @@ export class DownloadService {
     ifNoneMatch?: string,
     rangeHeader?: string,
   ): Promise<DownloadResult> {
-    // Need to resolve versionNumber to versionId
     const version = await this.prisma.fileVersion.findUnique({
       where: { fileId_versionNumber: { fileId, versionNumber } },
     });
@@ -447,9 +410,6 @@ export class DownloadService {
     );
   }
 
-  /**
-   * Generates a short-lived pre-signed URL for direct MinIO download.
-   */
   async getSignedDownloadUrl(
     userId: string,
     fileId: string,

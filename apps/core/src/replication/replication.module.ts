@@ -18,7 +18,6 @@ import { EdgeCacheModule } from '../common/edge-cache/edge-cache.module';
     HealthCheckModule,
     EdgeCacheModule,
 
-    // Register the BullMQ queue using the existing Redis connection
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -30,7 +29,6 @@ import { EdgeCacheModule } from '../common/edge-cache/edge-cache.module';
       }),
     }),
 
-    // Register the named queue for replication jobs
     BullModule.registerQueue({
       name: 'replication.normal',
     }),

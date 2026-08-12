@@ -23,9 +23,6 @@ export class DownloadController {
     private readonly routingService: RoutingService,
   ) {}
 
-  /**
-   * Helper to apply standardized CDN headers
-   */
   private applyHeaders(res: Response, result: DownloadResult, isRange = false) {
     if (result.etag) res.setHeader('ETag', result.etag);
     if (result.cacheControl)
@@ -51,10 +48,6 @@ export class DownloadController {
     }
   }
 
-  /**
-   * GET /api/v1/download/:fileId
-   * Streams the current version of a file. Supports Range requests and ETags.
-   */
   @Get(':fileId')
   async downloadFile(
     @CurrentUser() user: Omit<User, 'passwordHash'>,
@@ -70,7 +63,7 @@ export class DownloadController {
 
     if (routingDecision) {
       const { edge, distanceKm, strategy } = routingDecision;
-      // Fetch current version to construct correct redirect URL
+
       const currentVersion = await this.downloadService.getCurrentVersion(
         user.id,
         fileId,
@@ -107,10 +100,6 @@ export class DownloadController {
     result.stream!.pipe(res);
   }
 
-  /**
-   * GET /api/v1/download/:fileId/signed
-   * Returns a short-lived pre-signed URL for direct MinIO download.
-   */
   @Get(':fileId/signed')
   async getSignedUrl(
     @CurrentUser() user: Omit<User, 'passwordHash'>,
@@ -125,10 +114,6 @@ export class DownloadController {
     );
   }
 
-  /**
-   * GET /api/v1/download/:fileId/versions/:versionNumber
-   * Downloads a specific version of a file.
-   */
   @Get(':fileId/versions/:versionNumber')
   async downloadVersion(
     @CurrentUser() user: Omit<User, 'passwordHash'>,

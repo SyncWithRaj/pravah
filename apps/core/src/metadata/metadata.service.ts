@@ -34,7 +34,6 @@ export class MetadataService {
       this.prisma.file.count({ where: { ownerId: userId } }),
     ]);
 
-    // Map BigInts to Strings for JSON serialization
     const mappedFiles = files.map((f) => ({
       ...f,
       totalSize: f.totalSize.toString(),
@@ -126,30 +125,22 @@ export class MetadataService {
       throw new ForbiddenException('Access denied');
     }
 
-    // 1. Gather all MinIO keys to delete
     const keysToDelete: string[] = [];
 
-    // Add main file storage path if it exists
     if (file.storagePath) keysToDelete.push(file.storagePath);
 
-    // Add all historical version storage paths
     file.versions.forEach((v) => {
       if (v.storagePath) keysToDelete.push(v.storagePath);
     });
 
-    // Add any lingering temporary chunks
     file.chunks.forEach((c) => {
       if (c.storagePath) keysToDelete.push(c.storagePath);
     });
 
-    // 2. Delete physical objects from MinIO
     if (keysToDelete.length > 0) {
       await this.minioService.deleteObjects(keysToDelete);
     }
 
-    // 3. Delete from PostgreSQL
-    // Because of @relation(onDelete: Cascade) on FileVersion and FileChunk,
-    // this single command will clean up all related rows automatically.
     await this.prisma.file.delete({
       where: { id: fileId },
     });

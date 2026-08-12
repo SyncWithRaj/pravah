@@ -50,11 +50,6 @@ export class MetadataController {
   }
 }
 
-// INTERNAL API: Used by Edge nodes to fetch file version metadata for cache misses
-// Excluded from global JwtAuthGuard using metadata if needed, but since guard is on class,
-// we must move this to a separate controller or bypass the guard.
-// Actually, let's create a new InternalMetadataController to avoid guard issues.
-
 @Controller('internal/metadata')
 export class InternalMetadataController {
   constructor(private readonly metadataService: MetadataService) {}

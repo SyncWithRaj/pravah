@@ -11,18 +11,6 @@ import { KafkaService } from '../common/kafka/kafka.service';
 import { ReplicationJobStatus } from '@prisma/client';
 import { ReplicationJobData } from './replication.service';
 
-/**
- * BullMQ Worker Process that consumes replication jobs from the 'replication.normal' queue.
- *
- * For each job:
- *   1. Marks the DB record as IN_PROGRESS
- *   2. Streams the file from MinIO origin
- *   3. Stores the object in the target edge node's Redis cache and updates its cache metadata (LRU, size counter).
- *   4. Marks the DB record as COMPLETE with timing metrics
- *
- * On failure, BullMQ automatically retries with exponential backoff + jitter (2s, 4s, 8s).
- * After 3 failed attempts, the job stays in BullMQ's failed queue for admin inspection.
- */
 @Processor('replication.normal', { concurrency: 5 })
 export class ReplicationProcessor extends WorkerHost {
   private readonly logger = new Logger(ReplicationProcessor.name);
@@ -44,7 +32,6 @@ export class ReplicationProcessor extends WorkerHost {
       `Processing replication job: ${fileId} -> edge ${edgeNodeId} (attempt ${job.attemptsMade + 1})`,
     );
 
-    // 1. Mark as IN_PROGRESS in DB
     await this.prisma.replicationStatus.update({
       where: {
         fileId_edgeNodeId: { fileId, edgeNodeId },
@@ -57,7 +44,6 @@ export class ReplicationProcessor extends WorkerHost {
     });
 
     try {
-      // 2. Fetch file metadata from DB for cache population
       const version = await this.prisma.fileVersion.findUnique({
         where: { id: versionId },
         include: { file: true },
@@ -67,15 +53,12 @@ export class ReplicationProcessor extends WorkerHost {
         throw new Error(`Version ${versionId} not found for file ${fileId}`);
       }
 
-      // 3. Prevent RAM Bloat (OOM Protection)
-      // As noted, Redis is a hot-RAM cache. We explicitly refuse to stream massive files into RAM buffers.
-      const MAX_RAM_CACHE_SIZE = 20 * 1024 * 1024; // 20 MB limit
+      const MAX_RAM_CACHE_SIZE = 20 * 1024 * 1024;
       if (Number(version.size) > MAX_RAM_CACHE_SIZE) {
         this.logger.warn(
           `File ${fileId} exceeds RAM cache limit (${version.size} bytes). Bypassing Edge Cache replication.`,
         );
 
-        // Mark complete early since we intentionally bypass RAM
         await this.prisma.replicationStatus.update({
           where: { fileId_edgeNodeId: { fileId, edgeNodeId } },
           data: {
@@ -88,7 +71,6 @@ export class ReplicationProcessor extends WorkerHost {
         return;
       }
 
-      // 4. Stream the file from MinIO and collect into a buffer
       const stream = await this.minioService.getObjectStream(storagePath);
       const chunks: Buffer[] = [];
 
@@ -100,7 +82,6 @@ export class ReplicationProcessor extends WorkerHost {
 
       const fullBuffer = Buffer.concat(chunks);
 
-      // 5. Build cache metadata
       const metadata: CacheMetadata = {
         ownerId: version.file.ownerId,
         contentType: version.file.mimeType,
@@ -111,7 +92,6 @@ export class ReplicationProcessor extends WorkerHost {
         contentEncoding: version.isCompressed ? 'gzip' : undefined,
       };
 
-      // 6. Push into the local Redis edge cache
       await this.edgeCacheService.cacheFile(
         fileId,
         versionId,
@@ -119,7 +99,6 @@ export class ReplicationProcessor extends WorkerHost {
         fullBuffer,
       );
 
-      // 7. Mark as COMPLETE with timing metrics
       const durationMs = Date.now() - startTime;
       await this.prisma.replicationStatus.update({
         where: {
@@ -133,7 +112,6 @@ export class ReplicationProcessor extends WorkerHost {
         },
       });
 
-      // 8. Emit Kafka event for analytics
       this.kafkaService.emitReplicationStatusChanged(
         fileId,
         edgeNodeId,
@@ -148,14 +126,13 @@ export class ReplicationProcessor extends WorkerHost {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
 
-      // Update DB with failure info
       await this.prisma.replicationStatus.update({
         where: {
           fileId_edgeNodeId: { fileId, edgeNodeId },
         },
         data: {
           lastError: errorMessage,
-          // Only mark as FAILED if this is the last attempt
+
           status:
             job.attemptsMade + 1 >= (job.opts.attempts ?? 3)
               ? ReplicationJobStatus.FAILED
@@ -164,7 +141,6 @@ export class ReplicationProcessor extends WorkerHost {
       });
 
       if (job.attemptsMade + 1 >= (job.opts.attempts ?? 3)) {
-        // Final failure — this will end up in BullMQ's failed queue (DLQ (Dead Letter Queue))
         this.kafkaService.emitReplicationStatusChanged(
           fileId,
           edgeNodeId,
@@ -180,7 +156,6 @@ export class ReplicationProcessor extends WorkerHost {
         );
       }
 
-      // Re-throw so BullMQ knows to retry
       throw error;
     }
   }

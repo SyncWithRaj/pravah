@@ -17,7 +17,7 @@ export class HeartbeatService {
     this.coreApiUrl = this.configService.get<string>('CORE_API_URL', 'http://localhost:3000');
   }
 
-  // Run every 10 seconds
+  
   @Cron('*/10 * * * * *')
   async sendHeartbeat() {
     try {

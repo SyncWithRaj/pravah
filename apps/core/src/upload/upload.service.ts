@@ -25,11 +25,7 @@ export class UploadService {
     private readonly edgeCacheService: EdgeCacheService,
   ) {}
 
-  /**
-   * Initializes a chunked upload session.
-   */
   async initUpload(userId: string, dto: InitUploadDto) {
-    // Create File record in DB
     const file = await this.prisma.file.create({
       data: {
         name: dto.name,
@@ -42,7 +38,6 @@ export class UploadService {
       },
     });
 
-    // Create FileChunk rows for tracking
     const chunkData = Array.from({ length: dto.totalChunks }, (_, index) => ({
       fileId: file.id,
       chunkIndex: index,
@@ -64,9 +59,6 @@ export class UploadService {
     };
   }
 
-  /**
-   * Initializes an upload session for a NEW version of an existing file.
-   */
   async initVersionUpload(userId: string, fileId: string, dto: InitUploadDto) {
     const file = await this.prisma.file.findUnique({
       where: { id: fileId },
@@ -80,12 +72,10 @@ export class UploadService {
       throw new ForbiddenException('Access denied');
     }
 
-    // Clean up any old dangling chunks from previous uploads for this fileId
     await this.prisma.fileChunk.deleteMany({
       where: { fileId: file.id },
     });
 
-    // Update the File record to reflect the new incoming version
     const updatedFile = await this.prisma.file.update({
       where: { id: file.id },
       data: {
@@ -99,7 +89,6 @@ export class UploadService {
       },
     });
 
-    // Create new FileChunk rows for the new version
     const chunkData = Array.from({ length: dto.totalChunks }, (_, index) => ({
       fileId: file.id,
       chunkIndex: index,
@@ -121,10 +110,6 @@ export class UploadService {
     };
   }
 
-  /**
-   * Processes and stores an individual file chunk.
-   * Idempotent: safe to retry on network failure (PUT semantics).
-   */
   async uploadChunk(
     userId: string,
     fileId: string,
@@ -152,7 +137,6 @@ export class UploadService {
       throw new BadRequestException('Upload already completed');
     }
 
-    // 1. Verify SHA-256 Checksum
     const calculatedChecksum = crypto
       .createHash('sha256')
       .update(fileBuffer)
@@ -167,11 +151,9 @@ export class UploadService {
       );
     }
 
-    // 2. Upload chunk to MinIO (idempotent — overwrites if already exists)
     const chunkStoragePath = `chunks/${file.id}/chunk-${chunkIndex}`;
     await this.minioService.uploadChunk(chunkStoragePath, fileBuffer);
 
-    // 3. Update FileChunk & File in DB
     await this.prisma.$transaction([
       this.prisma.fileChunk.update({
         where: {
@@ -211,9 +193,6 @@ export class UploadService {
     };
   }
 
-  /**
-   * Returns current progress of an upload session (for resuming uploads).
-   */
   async getUploadStatus(userId: string, fileId: string) {
     const file = await this.prisma.file.findUnique({
       where: { id: fileId },
@@ -247,9 +226,6 @@ export class UploadService {
     };
   }
 
-  /**
-   * Assembles all verified chunks into the final destination object in MinIO.
-   */
   async completeUpload(userId: string, dto: CompleteUploadDto) {
     const file = await this.prisma.file.findUnique({
       where: { id: dto.fileId },
@@ -272,7 +248,6 @@ export class UploadService {
       throw new BadRequestException('File is already marked as completed');
     }
 
-    // Verify all chunks are verified
     const verifiedChunks = file.chunks.filter(
       (c) => c.status === ChunkStatus.VERIFIED,
     );
@@ -283,13 +258,11 @@ export class UploadService {
       );
     }
 
-    // Mark as ASSEMBLING
     await this.prisma.file.update({
       where: { id: file.id },
       data: { status: FileStatus.ASSEMBLING },
     });
 
-    // 0. Determine the next version number
     const maxVersion = await this.prisma.fileVersion.findFirst({
       where: { fileId: file.id },
       orderBy: { versionNumber: 'desc' },
@@ -316,7 +289,6 @@ export class UploadService {
 
       let finalSize: bigint | number = file.totalSize;
 
-      // 1. Assemble chunks in MinIO
       if (isCompressible) {
         const result = await this.minioService.assembleAndCompressChunks(
           chunkKeys,
@@ -332,10 +304,8 @@ export class UploadService {
         );
       }
 
-      // 2. Clean up temporary chunk objects from MinIO
       await this.minioService.deleteObjects(chunkKeys);
 
-      // 3. Create FileVersion and update File record
       const version = await this.prisma.fileVersion.create({
         data: {
           fileId: file.id,
@@ -356,17 +326,14 @@ export class UploadService {
         },
       });
 
-      // 4. Update EdgeCache Pointer (Lazy loading resilient)
       await this.edgeCacheService
         .setCurrentVersion(file.id, version.id)
         .catch((e: Error) => {
-          // If Redis pointer update fails, Postgres is authoritative and will lazy-load on next miss
           console.warn(
             `Failed to update Redis pointer for ${file.id}: ${e.message}`,
           );
         });
 
-      // 5. Emit Kafka Event after DB commit
       this.kafkaService.emitFileUploaded({
         eventId: uuidv4(),
         eventType:
@@ -384,7 +351,6 @@ export class UploadService {
         uploadedAt: new Date().toISOString(),
       });
 
-      // 6. Broadcast cache invalidation so old versions are wiped from Edge node RAM
       if (nextVersionNumber > 1) {
         this.kafkaService.emitCacheInvalidate(updatedFile.id);
       }

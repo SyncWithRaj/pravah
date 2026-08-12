@@ -34,14 +34,14 @@ export class ReplicationProcessor extends WorkerHost {
     const { fileId, versionId, edgeNodeId, storagePath } = job.data;
     const startTime = Date.now();
 
-    // Determine the ACTUAL node ID processing this (in case of queue stealing)
+    
     const actualNodeId = process.env.EDGE_NODE_ID || 'edge-node-01';
 
     this.logger.log(
       `Processing replication job: ${fileId} -> edge ${actualNodeId} (attempt ${job.attemptsMade + 1})`,
     );
 
-    // 1. Emit IN_PROGRESS status
+    
     this.kafkaService.emitReplicationStatusChanged(
       fileId,
       actualNodeId,
@@ -50,7 +50,7 @@ export class ReplicationProcessor extends WorkerHost {
     );
 
     try {
-      // 2. Fetch file metadata from Core API via HTTP
+      
       let metadataResponse;
       try {
         const response = await firstValueFrom(
@@ -61,11 +61,11 @@ export class ReplicationProcessor extends WorkerHost {
         metadataResponse = response.data;
       } catch (error) {
         this.logger.error(`Failed to fetch metadata for replication: ${error.message}`);
-        // Fallback: If we can't get metadata, we still have the storagePath to fetch the file.
-        // We will just stream the MinIO file without RAM cache if we don't know the size, or stream into chunks.
+        
+        
       }
 
-      // 4. Stream the file from MinIO and collect into a buffer
+      
       const stream = await this.minioService.getObjectStream(storagePath);
       const chunks: Buffer[] = [];
 
@@ -77,7 +77,7 @@ export class ReplicationProcessor extends WorkerHost {
           currentSize += chunk.length;
           if (currentSize > MAX_RAM_CACHE_SIZE) {
             reject(new Error('Bypassed: Exceeds RAM Limit'));
-            // In a real scenario we'd abort the stream cleanly here.
+            
           } else {
             chunks.push(chunk);
           }
@@ -88,7 +88,7 @@ export class ReplicationProcessor extends WorkerHost {
 
       const fullBuffer = Buffer.concat(chunks);
 
-      // 5. Build cache metadata
+      
       const metadata: CacheMetadata = {
         ownerId: metadataResponse?.ownerId || 'unknown',
         contentType: metadataResponse?.mimeType || 'application/octet-stream',
@@ -98,7 +98,7 @@ export class ReplicationProcessor extends WorkerHost {
         cacheControl: 'public, max-age=31536000, immutable',
       };
 
-      // 6. Push into the local Redis edge cache
+      
       await this.edgeCacheService.cacheFile(
         fileId,
         versionId,
@@ -106,7 +106,7 @@ export class ReplicationProcessor extends WorkerHost {
         fullBuffer,
       );
 
-      // 7. Emit Kafka event for COMPLETE
+      
       const durationMs = Date.now() - startTime;
       this.kafkaService.emitReplicationStatusChanged(
         fileId,

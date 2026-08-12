@@ -30,6 +30,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     const { passwordHash, ...userWithoutPassword } = user;
     void passwordHash;
-    return userWithoutPassword; // This gets attached to req.user
+    return userWithoutPassword;
   }
 }
