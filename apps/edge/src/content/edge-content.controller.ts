@@ -1,6 +1,8 @@
 import {
   Controller,
   Get,
+  Post,
+  HttpCode,
   Param,
   Query,
   Res,
@@ -19,6 +21,8 @@ import { firstValueFrom } from 'rxjs';
 import { v4 as uuidv4 } from 'uuid';
 
 import { MetricsService } from '../metrics/metrics.service';
+
+import { KafkaService } from '../kafka/kafka.service';
 
 interface PlacementResponse {
   fileId: string;
@@ -42,6 +46,7 @@ export class EdgeContentController {
 
   private readonly coreApiUrl: string;
   private readonly edgeNodeId: string;
+  private readonly edgeRegion: string;
   private readonly peerTimeout: number;
   private readonly peerMaxAttempts: number;
 
@@ -51,9 +56,11 @@ export class EdgeContentController {
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
     private readonly metricsService: MetricsService,
+    private readonly kafkaService: KafkaService,
   ) {
     this.coreApiUrl = this.configService.get<string>('CORE_API_URL', 'http://localhost:3000');
     this.edgeNodeId = this.configService.get<string>('EDGE_NODE_ID', 'edge-node-01');
+    this.edgeRegion = this.configService.get<string>('EDGE_REGION', 'ap-south-1');
     this.peerTimeout = this.configService.get<number>('PEER_FETCH_TIMEOUT_MS', 2000);
     this.peerMaxAttempts = this.configService.get<number>('PEER_MAX_ATTEMPTS', 3);
   }
@@ -92,6 +99,24 @@ export class EdgeContentController {
         { cache_result: 'hit', status_code: '200' },
         durationSec,
       );
+      this.kafkaService.emitCacheAccess({
+        fileId,
+        version: versionStr,
+        edgeId: this.edgeNodeId,
+        region: this.edgeRegion,
+        eventType: 'hit',
+        bytesServed: cached.length,
+        downloadLatencyMs: Math.round(performance.now() - reqStart),
+        timestamp: new Date().toISOString(),
+      });
+
+      const meta = await this.edgeCacheService.getMetadata(fileId, versionStr);
+      if (meta?.contentType) res.setHeader('Content-Type', meta.contentType);
+      if (meta?.etag) res.setHeader('ETag', meta.etag);
+      if (meta?.contentEncoding) res.setHeader('Content-Encoding', meta.contentEncoding);
+      res.setHeader('X-Cache', 'HIT');
+      res.setHeader('X-CDN-Edge', this.edgeNodeId);
+      res.setHeader('X-CDN-Region', this.edgeRegion);
       return res.status(HttpStatus.OK).end(cached);
     }
 
@@ -170,7 +195,18 @@ export class EdgeContentController {
                 { cache_result: 'peer_fill', status_code: '200' },
                 durationSec,
               );
+              this.kafkaService.emitCacheAccess({
+                fileId,
+                version: versionStr,
+                edgeId: this.edgeNodeId,
+                region: this.edgeRegion,
+                eventType: 'peer_fill',
+                bytesServed: buffer.length,
+                downloadLatencyMs: Math.round(performance.now() - reqStart),
+                timestamp: new Date().toISOString(),
+              });
 
+              res.setHeader('X-Cache', 'PEER_HIT');
               return res.status(HttpStatus.OK).end(buffer);
             }
 
@@ -208,7 +244,7 @@ export class EdgeContentController {
 
       const fullBuffer = Buffer.concat(chunks);
 
-      if (fullBuffer.length <= 20 * 1024 * 1024) {
+      if (fullBuffer.length <= 100 * 1024 * 1024) {
         const metadata = placement
           ? this.buildCacheMetadata(placement)
           : this.buildFallbackMetadata();
@@ -222,7 +258,18 @@ export class EdgeContentController {
         { cache_result: 'origin_fill', status_code: '200' },
         durationSec,
       );
+      this.kafkaService.emitCacheAccess({
+        fileId,
+        version: versionStr,
+        edgeId: this.edgeNodeId,
+        region: this.edgeRegion,
+        eventType: 'miss',
+        bytesServed: fullBuffer.length,
+        downloadLatencyMs: Math.round(performance.now() - reqStart),
+        timestamp: new Date().toISOString(),
+      });
 
+      res.setHeader('X-Cache', 'MISS');
       return res.status(HttpStatus.OK).end(fullBuffer);
     } catch (error: any) {
       
@@ -234,6 +281,14 @@ export class EdgeContentController {
       
       await this.edgeCacheService.releaseStampedeLock(fileId, versionStr, lockValue);
     }
+  }
+
+  @Post(':fileId/purge')
+  @HttpCode(HttpStatus.OK)
+  async purgeLocalCache(@Param('fileId') fileId: string) {
+    const keys = await this.edgeCacheService.evictFile(fileId);
+    this.logger.log(`[Cache Purged] Evicted file ${fileId} from Edge RAM cache`);
+    return { success: true, edgeNodeId: this.edgeNodeId, fileId, message: 'Local RAM cache evicted' };
   }
 
   
