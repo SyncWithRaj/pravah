@@ -82,6 +82,8 @@ services:
       - KAFKA_BROKERS=redpanda:9092
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+      - OTEL_SERVICE_NAME=pravah-core
     env_file:
       - ../../.env
     depends_on:
@@ -89,6 +91,7 @@ services:
       - minio
       - redpanda
       - redis
+      - jaeger
     networks:
       - pravah-net
 
@@ -148,6 +151,20 @@ services:
     depends_on:
       - prometheus
       - loki
+    networks:
+      - pravah-net
+
+  # 10. Jaeger (Distributed Tracing UI & OTLP Collector)
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: pravah-jaeger
+    restart: always
+    ports:
+      - "16686:16686"
+      - "4317:4317"
+      - "4318:4318"
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
     networks:
       - pravah-net
 
