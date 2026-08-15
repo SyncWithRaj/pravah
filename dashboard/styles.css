@@ -242,6 +242,16 @@ body {
   background: var(--bg-card-hover);
 }
 
+.btn-danger {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+.btn-danger:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.25);
+  border-color: #ef4444;
+}
+
 .btn-xs {
   padding: 4px 10px;
   font-size: 0.75rem;
@@ -654,3 +664,138 @@ body {
 .modal-toggle-text a:hover {
   text-decoration: underline;
 }
+
+/* ==========================================================================
+   Live WebSocket Telemetry Card
+   ========================================================================== */
+.ws-card {
+  margin-top: 24px;
+}
+
+.ws-status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-muted);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.ws-status-badge.connected {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.ws-status-badge .pulse-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.ws-status-badge.connected .pulse-dot {
+  animation: pulse 2s infinite;
+}
+
+.ws-metrics-bar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.ws-metric {
+  background: var(--bg-card);
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ws-metric-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.ws-metric-val {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.ws-feed-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.ws-feed-header {
+  padding: 10px 14px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+  background: rgba(0, 0, 0, 0.15);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ws-feed-stream {
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ws-event-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+  border-left: 3px solid var(--border-subtle);
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.ws-event-item.hit {
+  border-left-color: #10b981;
+  color: #d1fae5;
+}
+
+.ws-event-item.miss {
+  border-left-color: #f59e0b;
+  color: #fef3c7;
+}
+
+.ws-event-item.peer {
+  border-left-color: #6366f1;
+  color: #e0e7ff;
+}
+
+.ws-event-item.health {
+  border-left-color: #ec4899;
+  color: #fce7f3;
+}
+
+.ws-event-item.upload {
+  border-left-color: #3b82f6;
+  color: #dbeafe;
+}
+

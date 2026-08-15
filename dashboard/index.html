@@ -6,7 +6,7 @@
   <title>Pravah CDN — Control & Test Playground</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -219,10 +219,44 @@
             </div>
           </div>
         </section>
+
+        <!-- Live Real-Time WebSocket Telemetry Feed -->
+        <section class="card ws-card">
+          <div class="card-header">
+            <h2>Live WebSocket Telemetry Stream</h2>
+            <div class="ws-status-badge" id="ws-status-badge">
+              <span class="pulse-dot"></span>
+              <span id="ws-status-text">Connecting...</span>
+            </div>
+          </div>
+
+          <div class="ws-metrics-bar">
+            <div class="ws-metric">
+              <span class="ws-metric-label">Live Throughput</span>
+              <span class="ws-metric-val" id="ws-throughput">0 B/s</span>
+            </div>
+            <div class="ws-metric">
+              <span class="ws-metric-label">RPS</span>
+              <span class="ws-metric-val" id="ws-rps">0.0 req/s</span>
+            </div>
+            <div class="ws-metric">
+              <span class="ws-metric-label">Global Hit Ratio</span>
+              <span class="ws-metric-val" id="ws-hit-ratio">100%</span>
+            </div>
+          </div>
+
+          <div class="ws-feed-box">
+            <div class="ws-feed-header">Incoming Distributed Events</div>
+            <div class="ws-feed-stream" id="ws-event-stream">
+              <div class="ws-event-item">Awaiting live Kafka & Edge events...</div>
+            </div>
+          </div>
+        </section>
       </div>
     </main>
   </div>
 
-  <script src="app.js"></script>
+  <script src="socket.io.min.js"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

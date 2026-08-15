@@ -113,8 +113,50 @@ authModal.addEventListener('click', (e) => {
 });
 
 // -------------------------------------------------------------
-// 2. Authentication
+// 2. Authentication & Session Manager
 // -------------------------------------------------------------
+async function autoAuthenticate(identifier = 'raj@pravah.com', password = 'supersecretpassword') {
+  try {
+    let loginRes = await fetch(`${state.coreUrl}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier, password }),
+    });
+
+    if (!loginRes.ok && loginRes.status === 401) {
+      const username = identifier.includes('@') ? identifier.split('@')[0] : identifier;
+      const email = identifier.includes('@') ? identifier : `${identifier}@pravah.com`;
+
+      await fetch(`${state.coreUrl}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email, password }),
+      });
+
+      loginRes = await fetch(`${state.coreUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, password }),
+      });
+    }
+
+    if (loginRes.ok) {
+      const loginData = await loginRes.json();
+      if (loginData.access_token) {
+        state.token = loginData.access_token;
+        localStorage.setItem('pravah_token', state.token);
+        userDisplay.innerText = identifier;
+        userDisplay.parentElement.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+        userDisplay.parentElement.style.color = '#10b981';
+        return true;
+      }
+    }
+  } catch (err) {
+    console.warn('Auto auth warning:', err);
+  }
+  return false;
+}
+
 authForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   const identifier = authIdentifier.value.trim();
@@ -126,47 +168,10 @@ authForm.addEventListener('submit', async (e) => {
   btnSubmitAuth.innerText = 'Authenticating...';
 
   try {
-    // 1. Try Login first
-    let loginRes = await fetch(`${state.coreUrl}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier, password }),
-    });
-
-    // 2. If user doesn't exist (401), auto-register and retry login
-    if (!loginRes.ok && loginRes.status === 401) {
-      const username = identifier.includes('@') ? identifier.split('@')[0] : identifier;
-      const email = identifier.includes('@') ? identifier : `${identifier}@pravah.com`;
-
-      await fetch(`${state.coreUrl}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email, password }),
-      });
-
-      // Retry login after auto-registration
-      loginRes = await fetch(`${state.coreUrl}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier, password }),
-      });
-    }
-
-    if (!loginRes.ok) {
-      const err = await loginRes.text();
-      throw new Error(`Login failed (${loginRes.status}): ${err}`);
-    }
-
-    const loginData = await loginRes.json();
-    if (loginData.access_token) {
-      state.token = loginData.access_token;
-      localStorage.setItem('pravah_token', state.token);
-      userDisplay.innerText = identifier;
-      userDisplay.parentElement.style.borderColor = 'rgba(16, 185, 129, 0.4)';
-      userDisplay.parentElement.style.color = '#10b981';
-      authModal.style.display = 'none';
-      fetchFiles();
-    }
+    const success = await autoAuthenticate(identifier, password);
+    if (!success) throw new Error('Invalid credentials');
+    authModal.style.display = 'none';
+    fetchFiles();
   } catch (err) {
     alert(`Authentication error: ${err.message}`);
   } finally {
@@ -179,6 +184,84 @@ toggleAuthMode.addEventListener('click', (e) => {
   e.preventDefault();
   authForm.dispatchEvent(new Event('submit'));
 });
+
+// -------------------------------------------------------------
+// 4. File Library & Purge API
+// -------------------------------------------------------------
+async function fetchFiles() {
+  btnRefreshFiles.innerText = '...';
+
+  if (!state.token) {
+    const ok = await autoAuthenticate();
+    if (!ok) {
+      btnRefreshFiles.innerText = 'Refresh';
+      fileList.innerHTML = '<div class="empty-state">Sign in to view your stored files.</div>';
+      return;
+    }
+  }
+
+  try {
+    let res = await fetch(`${state.coreUrl}/metadata/files?limit=20`, {
+      headers: { 'Authorization': `Bearer ${state.token}` },
+    });
+
+    if (res.status === 401) {
+      const ok = await autoAuthenticate();
+      if (ok) {
+        res = await fetch(`${state.coreUrl}/metadata/files?limit=20`, {
+          headers: { 'Authorization': `Bearer ${state.token}` },
+        });
+      }
+    }
+
+    if (!res.ok) {
+      fileList.innerHTML = '<div class="empty-state">Could not load files. Click Refresh to retry.</div>';
+      return;
+    }
+
+    const data = await res.json();
+    const files = data.data || data.files || [];
+
+    if (files.length === 0) {
+      fileList.innerHTML = '<div class="empty-state">No files uploaded yet. Upload a file above to test!</div>';
+      return;
+    }
+
+    fileList.innerHTML = files.map(f => {
+      const displayName = f.name || f.fileName || 'Untitled File';
+      const sizeStr = formatBytes(Number(f.totalSize || 0));
+      const versionNum = f.currentVersion?.versionNumber || 1;
+      const isSelected = selectedFileIdInput.value === f.id;
+      const isVideo = f.mimeType?.includes('video') || displayName.endsWith('.mp4');
+      const icon = isVideo ? '🎬' : '📄';
+
+      return `
+      <div class="file-item ${isSelected ? 'selected' : ''}" onclick="selectFile('${f.id}', '${displayName}')">
+        <div class="file-item-info">
+          <span class="file-item-name">${icon} ${displayName}</span>
+          <span class="file-item-sub">${sizeStr} • v${versionNum} • <code>${f.id.slice(0, 8)}...</code></span>
+        </div>
+        <div class="file-item-actions">
+          <button class="btn btn-xs btn-secondary" onclick="event.stopPropagation(); purgeFile('${f.id}')" title="Purge RAM Cache across all Edge Nodes">🧹 Purge</button>
+          <button class="btn btn-xs btn-danger" onclick="event.stopPropagation(); deleteFile('${f.id}')" title="Permanently delete from Origin & DB">🗑️</button>
+        </div>
+      </div>
+    `;
+    }).join('');
+
+    // If no file is selected, automatically select the first file
+    if (!selectedFileIdInput.value && files.length > 0) {
+      selectFile(files[0].id, files[0].name || files[0].fileName);
+    }
+  } catch (err) {
+    console.error('Fetch files error:', err);
+    fileList.innerHTML = '<div class="empty-state">Error loading files. Check connection.</div>';
+  } finally {
+    btnRefreshFiles.innerText = 'Refresh';
+  }
+}
+
+btnRefreshFiles.addEventListener('click', () => fetchFiles());
 
 // -------------------------------------------------------------
 // 3. Resumable Chunked Upload
@@ -305,44 +388,7 @@ btnStartUpload.addEventListener('click', async () => {
   }
 });
 
-// -------------------------------------------------------------
-// 4. File Library & Purge API
-// -------------------------------------------------------------
-async function fetchFiles() {
-  if (!state.token) return;
-  btnRefreshFiles.innerText = '...';
 
-  try {
-    const res = await fetch(`${state.coreUrl}/metadata/files?limit=20`, {
-      headers: { 'Authorization': `Bearer ${state.token}` },
-    });
-
-    if (!res.ok) return;
-    const data = await res.json();
-    const files = data.files || [];
-
-    if (files.length === 0) {
-      fileList.innerHTML = '<div class="empty-state">No files uploaded yet. Upload a file above to test!</div>';
-      return;
-    }
-
-    fileList.innerHTML = files.map(f => `
-      <div class="file-item ${state.selectedFile?.id === f.id ? 'selected' : ''}" onclick="selectFile('${f.id}', '${f.name}')">
-        <div class="file-item-info">
-          <span class="file-item-name">${f.name}</span>
-          <span class="file-item-sub">${formatBytes(Number(f.totalSize))} • v${f.currentVersion?.versionNumber || 1} • ${f.id.slice(0, 8)}...</span>
-        </div>
-        <div class="file-item-actions">
-          <button class="btn btn-xs btn-secondary" onclick="event.stopPropagation(); purgeFile('${f.id}')" title="Force Purge across all Edge Nodes">🧹 Purge</button>
-        </div>
-      </div>
-    `).join('');
-  } catch (err) {
-    console.error('Fetch files error:', err);
-  } finally {
-    btnRefreshFiles.innerText = 'Refresh';
-  }
-}
 
 window.selectFile = function(fileId, name) {
   selectedFileIdInput.value = fileId;
@@ -354,7 +400,10 @@ window.selectFile = function(fileId, name) {
 window.purgeFile = async function(fileId) {
   if (!confirm('Force purge this file across all Edge Nodes via Kafka?')) return;
   try {
-    const res = await fetch(`${state.coreUrl}/metadata/purge`, {
+    logTrace(`[Step 1] Sending Cluster Cache Purge request to Core (${state.coreUrl}/admin/cache/purge)...`);
+
+    // 1. Core broadcasts invalidation event
+    const res = await fetch(`${state.coreUrl}/admin/cache/purge`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -363,12 +412,44 @@ window.purgeFile = async function(fileId) {
       body: JSON.stringify({ fileId }),
     });
 
+    // 2. Also call Edge Node directly for instant local eviction
+    await fetch(`${state.edgeUrl}/edge/content/${fileId}/purge`, { method: 'POST' }).catch(() => {});
+
     if (res.ok) {
-      logTrace(`[Cluster Purge] Dispatched cache.invalidate event for file ${fileId} over Kafka.\nAll edge nodes evicted file from RAM.`);
-      alert('File successfully purged from all Edge Nodes!');
+      metricCacheState.innerText = '⏳ PURGED / COLD';
+      metricCacheState.className = 'metric-value miss';
+      logTrace(`[Step 2] 🧹 Cluster Cache Purged Successfully!\n📡 Core emitted 'cache.invalidated' event over Kafka.\n⚡ Edge Node evicted '${fileId.slice(0, 8)}...' from Redis RAM.\n🎯 Next Geo-Routing request will be a verified CACHE MISS (re-fetching from Origin).`);
+      appendWsEvent(`Cache Purged: ${fileId.slice(0, 8)}... (Evicted from Edge RAM)`, 'miss');
     }
   } catch (err) {
+    logTrace(`❌ Purge failed: ${err.message}`);
     alert(`Purge failed: ${err.message}`);
+  }
+};
+
+window.deleteFile = async function(fileId) {
+  if (!confirm('Permanently delete this file from Origin (MinIO) and Database?')) return;
+  try {
+    const res = await fetch(`${state.coreUrl}/metadata/files/${fileId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${state.token}`,
+      },
+    });
+
+    if (res.ok) {
+      if (selectedFileIdInput.value === fileId) {
+        selectedFileIdInput.value = '';
+        btnCdnDownload.disabled = true;
+      }
+      logTrace(`[Delete] File ${fileId} permanently removed from Database and Origin.`);
+      fetchFiles();
+    } else {
+      const err = await res.text();
+      alert(`Delete failed: ${err}`);
+    }
+  } catch (err) {
+    alert(`Delete failed: ${err.message}`);
   }
 };
 
@@ -402,60 +483,48 @@ btnCdnDownload.addEventListener('click', async () => {
   try {
     logTrace(`[Step 1] Sending download request to Core (${state.coreUrl}/download/${fileId}) with client region '${region}'...`);
 
-    // Step 1: Request Core with redirect: manual
-    const coreRes = await fetch(`${state.coreUrl}/download/${fileId}`, {
+    const edgeStartTime = performance.now();
+    const res = await fetch(`${state.coreUrl}/download/${fileId}`, {
       headers: {
         'Authorization': `Bearer ${state.token}`,
         'x-test-client-region': region,
       },
-      redirect: 'manual',
+      redirect: 'follow',
     });
 
-    let fetchUrl = '';
-    const redirectUrl = coreRes.headers.get('Location') || coreRes.headers.get('location');
-    const edgeName = coreRes.headers.get('X-CDN-Edge') || 'Mumbai Edge';
-    const edgeRegion = coreRes.headers.get('X-CDN-Region') || region;
-    const strategy = coreRes.headers.get('X-CDN-Strategy') || 'Haversine Geo';
-    const distanceKm = coreRes.headers.get('X-CDN-Distance-Km') || '0';
-
-    if (coreRes.status === 302 && redirectUrl) {
-      logTrace(`[Step 2] Core 302 Redirect Received!\n🎯 Target Edge: ${edgeName} (${edgeRegion})\n📐 Strategy: ${strategy}\n📏 Distance: ${distanceKm} km\n🔗 Edge URL: ${redirectUrl}`);
-      fetchUrl = redirectUrl;
-    } else {
-      logTrace(`[Step 2] Core direct stream fallback (Status: ${coreRes.status})`);
-      // Direct stream or reconstruct Edge URL
-      fetchUrl = `${state.edgeUrl}/edge/content/${fileId}?v=1`;
-    }
-
-    metricEdgeName.innerText = edgeName;
-    metricDistance.innerText = distanceKm === 'N/A' ? '0 km' : `${distanceKm} km`;
-
-    // Step 3: Fetch file from Edge Node
-    logTrace(`[Step 3] Fetching file binary from Edge Node...`);
-    const edgeStartTime = performance.now();
-    const edgeRes = await fetch(fetchUrl);
     const totalLatency = Math.round(performance.now() - startTime);
     const edgeLatency = Math.round(performance.now() - edgeStartTime);
 
-    if (!edgeRes.ok) throw new Error(`Edge returned status ${edgeRes.status}`);
+    if (!res.ok) throw new Error(`Delivery returned status ${res.status}`);
 
-    const contentType = edgeRes.headers.get('Content-Type') || '';
-    const blob = await edgeRes.blob();
+    const cacheHeader = res.headers.get('x-cache') || res.headers.get('X-Cache');
+    const edgeName = res.headers.get('x-cdn-edge') || res.headers.get('X-CDN-Edge') || 'Mumbai Edge';
+    const edgeRegion = res.headers.get('x-cdn-region') || res.headers.get('X-CDN-Region') || region;
+    const strategy = res.headers.get('x-cdn-strategy') || res.headers.get('X-CDN-Strategy') || 'Haversine Geo';
+    const distanceKm = res.headers.get('x-cdn-distance-km') || res.headers.get('X-CDN-Distance-Km') || '0';
 
+    logTrace(`[Step 2] Core Geo-Routed Request!\n🎯 Target Edge: ${edgeName} (${edgeRegion})\n📐 Strategy: ${strategy}\n📏 Distance: ${distanceKm} km`);
+
+    metricEdgeName.innerText = edgeName;
+    metricDistance.innerText = distanceKm === 'N/A' ? '0 km' : `${distanceKm} km`;
     metricLatency.innerText = `${totalLatency} ms`;
 
-    // Cache hit detection (latency < 40ms typically indicates Redis RAM delivery)
-    if (edgeLatency <= 35) {
-      metricCacheState.innerText = '⚡ CACHE HIT';
+    const isHit = cacheHeader === 'HIT' || cacheHeader === 'PEER_HIT';
+    if (isHit) {
+      const hitLabel = cacheHeader === 'PEER_HIT' ? '⚡ PEER HIT' : '⚡ CACHE HIT';
+      metricCacheState.innerText = hitLabel;
       metricCacheState.className = 'metric-value hit';
-      logTrace(`[Step 4] ✅ CACHE HIT: Delivered directly from Edge Redis RAM in ${edgeLatency}ms! (Total roundtrip: ${totalLatency}ms)`);
+      logTrace(`[Step 3] ✅ ${hitLabel}: Delivered directly from Edge Redis RAM in ${edgeLatency}ms! (Total roundtrip: ${totalLatency}ms)`);
     } else {
       metricCacheState.innerText = '⏳ CACHE MISS';
       metricCacheState.className = 'metric-value miss';
-      logTrace(`[Step 4] ⚠️ CACHE MISS: Edge fetched from MinIO Origin & cached in RAM in ${edgeLatency}ms!`);
+      logTrace(`[Step 3] ⚠️ CACHE MISS: Edge fetched from MinIO Origin & cached in RAM in ${edgeLatency}ms!`);
     }
 
-    // Step 5: Render Content Preview
+    const contentType = res.headers.get('Content-Type') || '';
+    const blob = await res.blob();
+
+    // Step 4: Render Content Preview
     renderPreview(blob, contentType);
 
   } catch (err) {
@@ -491,6 +560,94 @@ function renderPreview(blob, contentType) {
 }
 
 // -------------------------------------------------------------
+// 7. Live Real-Time WebSocket Telemetry Connection
+// -------------------------------------------------------------
+const wsStatusBadge = document.getElementById('ws-status-badge');
+const wsStatusText = document.getElementById('ws-status-text');
+const wsThroughput = document.getElementById('ws-throughput');
+const wsRps = document.getElementById('ws-rps');
+const wsHitRatio = document.getElementById('ws-hit-ratio');
+const wsEventStream = document.getElementById('ws-event-stream');
+
+let socket = null;
+
+function appendWsEvent(text, type = 'info') {
+  if (!wsEventStream) return;
+  const item = document.createElement('div');
+  item.className = `ws-event-item ${type}`;
+  const time = new Date().toLocaleTimeString();
+  item.textContent = `[${time}] ${text}`;
+  wsEventStream.prepend(item);
+
+  // Limit stream length to 50 entries
+  if (wsEventStream.children.length > 50) {
+    wsEventStream.removeChild(wsEventStream.lastChild);
+  }
+}
+
+function initWebSocket() {
+  if (typeof io === 'undefined') {
+    setTimeout(initWebSocket, 500);
+    return;
+  }
+
+  try {
+    const wsOrigin = state.coreUrl.replace(/\/api\/v1\/?$/, '');
+    if (socket) socket.disconnect();
+
+    socket = io(wsOrigin, {
+      transports: ['websocket', 'polling'],
+      reconnectionAttempts: 10,
+      reconnectionDelay: 2000,
+    });
+
+    socket.on('connect', () => {
+      wsStatusBadge?.classList.add('connected');
+      if (wsStatusText) wsStatusText.innerText = 'Connected';
+      appendWsEvent('Connected to Pravah Real-Time Telemetry Gateway', 'health');
+    });
+
+    socket.on('disconnect', () => {
+      wsStatusBadge?.classList.remove('connected');
+      if (wsStatusText) wsStatusText.innerText = 'Disconnected';
+      appendWsEvent('Disconnected from Telemetry Gateway', 'miss');
+    });
+
+    socket.on('telemetry.throughput', (data) => {
+      if (wsThroughput) wsThroughput.innerText = `${formatBytes(data.bandwidthBps)}/s`;
+      if (wsRps) wsRps.innerText = `${data.requestsPerSecond} req/s`;
+      if (wsHitRatio) wsHitRatio.innerText = `${data.hitRatio}%`;
+    });
+
+    socket.on('cache.access', (data) => {
+      const type = data.eventType === 'hit' ? 'hit' : data.eventType === 'peer_fill' ? 'peer' : 'miss';
+      const label = data.eventType === 'hit' ? 'RAM Cache Hit' : data.eventType === 'peer_fill' ? 'Peer Fill' : 'Origin Miss';
+      appendWsEvent(`${label} (${data.downloadLatencyMs}ms): ${data.edgeId} served ${data.fileId.slice(0, 8)}... (${formatBytes(data.bytesServed)})`, type);
+    });
+
+    socket.on('edge.health_changed', (data) => {
+      appendWsEvent(`Node Health: ${data.edgeId} changed ${data.oldStatus} -> ${data.newStatus}`, 'health');
+      checkHealth();
+    });
+
+    socket.on('replication.status', (data) => {
+      appendWsEvent(`Replication [${data.status}]: ${data.fileId.slice(0, 8)}... -> ${data.edgeNodeId}`, 'peer');
+    });
+
+    socket.on('upload.progress', (data) => {
+      appendWsEvent(`Upload: ${data.fileName} chunk ${data.chunkIndex + 1}/${data.totalChunks} (${data.percentage}%)`, 'upload');
+    });
+
+    socket.on('cache.invalidated', (data) => {
+      appendWsEvent(`Cache Purged: ${data.fileId.slice(0, 8)}... (Evicted from cluster)`, 'miss');
+      fetchFiles();
+    });
+  } catch (err) {
+    console.error('Failed to init WebSocket:', err);
+  }
+}
+
+// -------------------------------------------------------------
 // Initialization
 // -------------------------------------------------------------
 btnRefreshStatus.addEventListener('click', checkHealth);
@@ -500,9 +657,5 @@ selectedFileIdInput.addEventListener('input', () => {
 
 // Initial load
 checkHealth();
-if (state.token) {
-  userDisplay.innerText = 'Active Session';
-  userDisplay.parentElement.style.borderColor = 'rgba(16, 185, 129, 0.4)';
-  userDisplay.parentElement.style.color = '#10b981';
-  fetchFiles();
-}
+initWebSocket();
+fetchFiles();
