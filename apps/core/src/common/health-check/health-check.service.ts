@@ -5,6 +5,7 @@ import { Redis } from 'ioredis';
 import { PrismaService } from '../../prisma/prisma.service';
 import { KafkaService } from '../kafka/kafka.service';
 import { EdgeNodeStatus } from '@prisma/client';
+import { MetricsService } from '../../metrics/metrics.service';
 
 export interface EdgeNodeRecord {
   id: string;
@@ -28,6 +29,7 @@ export class HealthCheckService implements OnModuleInit {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
     private readonly kafkaService: KafkaService,
+    private readonly metricsService: MetricsService,
   ) {}
 
   async onModuleInit() {
@@ -102,7 +104,7 @@ export class HealthCheckService implements OnModuleInit {
     const newMap = new Map<string, EdgeNodeRecord>();
     for (const node of nodes) {
       const existing = this.nodeMap.get(node.id);
-      newMap.set(node.id, {
+      const record: EdgeNodeRecord = {
         id: node.id,
         name: node.name,
         region: node.region,
@@ -111,7 +113,22 @@ export class HealthCheckService implements OnModuleInit {
         longitude: node.longitude,
         status: node.status,
         missedCycles: existing?.missedCycles ?? 0,
-      });
+      };
+      newMap.set(node.id, record);
+      const gaugeVal =
+        node.status === EdgeNodeStatus.HEALTHY
+          ? 1
+          : node.status === EdgeNodeStatus.DEGRADED
+            ? 0.5
+            : 0;
+      this.metricsService.edgeHealthStatus.set(
+        {
+          edge_id: node.id,
+          edge_name: node.name,
+          region: node.region,
+        },
+        gaugeVal,
+      );
     }
 
     this.nodeMap = newMap;
@@ -127,6 +144,22 @@ export class HealthCheckService implements OnModuleInit {
 
     const oldStatus = node.status;
     node.status = newStatus;
+
+    // Update Prometheus Gauge: 1 = HEALTHY, 0.5 = DEGRADED, 0 = DOWN
+    const gaugeVal =
+      newStatus === EdgeNodeStatus.HEALTHY
+        ? 1
+        : newStatus === EdgeNodeStatus.DEGRADED
+          ? 0.5
+          : 0;
+    this.metricsService.edgeHealthStatus.set(
+      {
+        edge_id: node.id,
+        edge_name: node.name,
+        region: node.region,
+      },
+      gaugeVal,
+    );
 
     await this.prisma.edgeNode.update({
       where: { id: edgeId },

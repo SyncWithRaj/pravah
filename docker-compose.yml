@@ -1,11 +1,10 @@
-version: '3.8'
-
 services:
-  # 1. Primary Relational Database (PostgreSQL)
+  # 1. Primary Relational Database (PostgreSQL) - Core Only
   postgres:
     image: postgres:16-alpine
     container_name: pravah-postgres
     restart: always
+    profiles: ["core"]
     environment:
       POSTGRES_USER: admin_postgres
       POSTGRES_PASSWORD: postgres_password
@@ -15,21 +14,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # 2. Edge Cache & Distributed Locks (Redis)
-  redis:
-    image: redis:7-alpine
-    container_name: pravah-redis
-    restart: always
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-
-  # 3. Local S3-Compatible Origin Storage (MinIO)
+  # 2. Local S3-Compatible Origin Storage (MinIO) - Core Only
   minio:
     image: minio/minio:latest
     container_name: pravah-minio
     restart: always
+    profiles: ["core"]
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: admin_minio
@@ -40,10 +30,11 @@ services:
     volumes:
       - minio_data:/data
 
-  # 4. Message Broker (Kafka compatible via Redpanda)
+  # 3. Message Broker (Kafka compatible via Redpanda) - Core Only
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:latest
     container_name: pravah-redpanda
+    profiles: ["core"]
     command:
       - redpanda
       - start
@@ -57,8 +48,125 @@ services:
     volumes:
       - redpanda_data:/var/lib/redpanda/data
 
+  # 4. Redis - Needed by both Core (Queues) and Edge (Cache)
+  redis:
+    image: redis:7-alpine
+    container_name: pravah-redis
+    restart: always
+    profiles: ["core", "edge"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # 5. Core Application
+  core-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.core
+    container_name: pravah-core
+    restart: always
+    profiles: ["core"]
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://admin_postgres:postgres_password@postgres:5432/pravah_db?schema=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BROKERS=redpanda:9092
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - minio
+      - redpanda
+      - redis
+
+  # 6. Edge Application
+  edge-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.edge
+    container_name: pravah-edge
+    restart: always
+    profiles: ["edge"]
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BROKERS=redpanda:9092
+      - CORE_API_URL=http://core-app:3000
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - redpanda
+      - minio
+
+  # 7. Prometheus (Metrics Scraper & Time-Series DB)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: pravah-prometheus
+    restart: always
+    profiles: ["core", "monitoring"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  # 8. Grafana Loki (Distributed Log Engine)
+  loki:
+    image: grafana/loki:latest
+    container_name: pravah-loki
+    restart: always
+    profiles: ["core", "monitoring"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki-config.yml:/etc/loki/local-config.yaml:ro
+
+  # 9. Promtail (Docker Log Collector & Shipper)
+  promtail:
+    image: grafana/promtail:latest
+    container_name: pravah-promtail
+    restart: always
+    profiles: ["core", "monitoring"]
+    volumes:
+      - ./observability/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  # 10. Grafana Dashboard (Unified Metrics & Logs Visualization)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: pravah-grafana
+    restart: always
+    profiles: ["core", "monitoring"]
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - loki
+
 volumes:
   postgres_data:
   redis_data:
   minio_data:
   redpanda_data:
+  grafana_data:

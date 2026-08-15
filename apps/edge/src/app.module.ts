@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ContentModule } from './content/content.module';
 import { ReplicationModule } from './replication/replication.module';
 import { HeartbeatModule } from './heartbeat/heartbeat.module';
+import { MetricsModule } from './metrics/metrics.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { HeartbeatModule } from './heartbeat/heartbeat.module';
     ContentModule,
     ReplicationModule,
     HeartbeatModule,
+    MetricsModule,
   ],
 })
 export class AppModule {}

@@ -1,0 +1,32 @@
+FROM node:22-alpine
+
+# Install pnpm
+RUN npm install -g pnpm
+
+# Set working directory
+WORKDIR /app
+
+# Copy root configurations
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
+# Copy the core app source code
+COPY apps/core ./apps/core
+
+# Install ALL dependencies (including devDependencies for build tools)
+RUN pnpm install --frozen-lockfile
+
+# Generate Prisma client specifically for core
+RUN pnpm --filter core exec prisma generate
+
+# Build the Core app from its own directory
+WORKDIR /app/apps/core
+RUN pnpm exec nest build
+
+# Reset working directory
+WORKDIR /app
+
+# Expose Core API port
+EXPOSE 3000
+
+# Start Core app
+CMD ["node", "apps/core/dist/src/main"]

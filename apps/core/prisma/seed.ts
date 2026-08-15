@@ -1,15 +1,28 @@
 import { PrismaClient, EdgeNodeStatus } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import "dotenv/config";
+import * as fs from 'fs';
+import * as path from 'path';
 
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+let dbUrl = process.env.DATABASE_URL;
+if (!dbUrl) {
+  try {
+    const envContent = fs.readFileSync(path.resolve(__dirname, '../../../.env'), 'utf-8');
+    const match = envContent.match(/^DATABASE_URL=["']?([^"'\r\n]+)["']?/m);
+    if (match) dbUrl = match[1];
+  } catch {}
+}
+
+const adapter = new PrismaPg({ connectionString: dbUrl });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log('Seeding Phase 5A Edge Nodes...');
 
+  await prisma.edgeNode.deleteMany();
+
   const nodes = [
     {
+      id: 'edge-node-01',
       name: 'Mumbai Edge',
       region: 'ap-south-1',
       latitude: 19.076,
@@ -18,6 +31,7 @@ async function main() {
       status: EdgeNodeStatus.HEALTHY,
     },
     {
+      id: 'edge-node-02',
       name: 'Virginia Edge',
       region: 'us-east-1',
       latitude: 37.4316,
@@ -26,6 +40,7 @@ async function main() {
       status: EdgeNodeStatus.HEALTHY,
     },
     {
+      id: 'edge-node-03',
       name: 'Frankfurt Edge',
       region: 'eu-central-1',
       latitude: 50.1109,
@@ -36,17 +51,10 @@ async function main() {
   ];
 
   for (const node of nodes) {
-    await prisma.edgeNode.upsert({
-      where: { name: node.name },
-      update: {
-        region: node.region,
-        latitude: node.latitude,
-        longitude: node.longitude,
-        endpointUrl: node.endpointUrl,
-      },
-      create: node,
+    await prisma.edgeNode.create({
+      data: node,
     });
-    console.log(`Upserted edge node: ${node.name}`);
+    console.log(`Created edge node: ${node.name} (${node.id})`);
   }
 
   console.log('Seeding finished.');
