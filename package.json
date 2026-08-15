@@ -8,6 +8,7 @@
     "lint": "pnpm -r lint",
     "fix": "pnpm -r format && pnpm -r lint",
     "build": "pnpm -r build",
-    "build:all": "pnpm run fix && pnpm run build"
+    "build:all": "pnpm run fix && pnpm run build",
+    "dashboard": "python3 -m http.server 8080 --directory dashboard"
   }
 }

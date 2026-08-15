@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pravah CDN — Control & Test Playground</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Top Header -->
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="brand-logo">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">Pravah CDN</h1>
+          <p class="brand-subtitle">Distributed Edge Delivery & Caching Playground</p>
+        </div>
+      </div>
+
+      <!-- Live Service Status Indicators -->
+      <div class="header-status">
+        <div class="status-pill" id="core-status-pill">
+          <span class="status-dot"></span>
+          <span class="status-label">Core Control Plane</span>
+          <span class="status-port">:3000</span>
+        </div>
+        <div class="status-pill" id="edge-status-pill">
+          <span class="status-dot"></span>
+          <span class="status-label">Edge Node</span>
+          <span class="status-port">:3001</span>
+        </div>
+        <div class="user-pill" id="user-pill">
+          <span class="user-avatar">👤</span>
+          <span id="user-display">Not Logged In</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Global Config & Auth Bar -->
+    <section class="config-bar">
+      <div class="config-group">
+        <label for="core-url-input">Core API URL</label>
+        <input type="text" id="core-url-input" value="http://localhost:3000/api/v1">
+      </div>
+      <div class="config-group">
+        <label for="edge-url-input">Edge Node URL</label>
+        <input type="text" id="edge-url-input" value="http://localhost:3001">
+      </div>
+      <div class="config-actions">
+        <button id="btn-open-login" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          Sign In / Register
+        </button>
+        <button id="btn-refresh-status" class="btn btn-secondary" title="Ping All Nodes">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <!-- Login / Register Modal -->
+    <div class="modal-overlay" id="auth-modal" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <h3 id="modal-title">Sign In to Pravah Core</h3>
+          <button class="btn-close" id="btn-close-modal">✕</button>
+        </div>
+        <form id="auth-form" class="modal-form">
+          <div class="control-field">
+            <label for="auth-identifier">Email / Username</label>
+            <input type="text" id="auth-identifier" value="raj@pravah.com" required class="text-input">
+          </div>
+          <div class="control-field">
+            <label for="auth-password">Password</label>
+            <input type="password" id="auth-password" value="supersecretpassword" required class="text-input">
+          </div>
+          <div class="modal-actions">
+            <button type="submit" id="btn-submit-auth" class="btn btn-primary full-width">Sign In</button>
+          </div>
+          <p class="modal-toggle-text">
+            Don't have an account? <a href="#" id="toggle-auth-mode">Auto-Register & Sign In</a>
+          </p>
+        </form>
+      </div>
+    </div>
+
+    <!-- Main Grid Dashboard -->
+    <main class="dashboard-grid">
+      <!-- Left Column: Upload Studio & File Library -->
+      <div class="col-left">
+        <!-- Chunked Upload Card -->
+        <section class="card upload-card">
+          <div class="card-header">
+            <h2>📤 Resumable Upload Studio</h2>
+            <span class="badge badge-accent">Chunked & Compressed</span>
+          </div>
+
+          <div class="drop-zone" id="drop-zone">
+            <input type="file" id="file-input" class="file-input-hidden">
+            <div class="drop-zone-content">
+              <div class="drop-icon">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="17 8 12 3 7 8"/>
+                  <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+              </div>
+              <p class="drop-title">Drag & drop files here or <span class="highlight">browse</span></p>
+              <p class="drop-hint">Images, videos, text, binary files (up to 500MB)</p>
+            </div>
+          </div>
+
+          <!-- File Upload Progress Section -->
+          <div class="upload-progress-container" id="upload-progress-container" style="display: none;">
+            <div class="file-meta-row">
+              <span class="file-name" id="upload-file-name">filename.ext</span>
+              <span class="file-size" id="upload-file-size">0 KB</span>
+            </div>
+            <div class="progress-bar-bg">
+              <div class="progress-bar-fill" id="upload-progress-fill" style="width: 0%;"></div>
+            </div>
+            <div class="progress-stats-row">
+              <span id="upload-chunk-status">Computing SHA-256...</span>
+              <span id="upload-percentage">0%</span>
+            </div>
+          </div>
+
+          <div class="upload-actions">
+            <button id="btn-start-upload" class="btn btn-accent full-width" disabled>
+              Start Chunked Upload to Origin
+            </button>
+          </div>
+        </section>
+
+        <!-- File Explorer & Version Manager -->
+        <section class="card files-card">
+          <div class="card-header">
+            <h2>📁 Stored CDN Files</h2>
+            <button id="btn-refresh-files" class="btn btn-xs btn-secondary">Refresh</button>
+          </div>
+          <div class="file-list-scroll">
+            <div class="file-list" id="file-list">
+              <div class="empty-state">No files uploaded yet. Upload a file above to test!</div>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Right Column: Geo-Routing & Delivery Inspector -->
+      <div class="col-right">
+        <section class="card inspector-card">
+          <div class="card-header">
+            <h2>🌍 Geo-Routing & Edge Delivery Inspector</h2>
+            <span class="badge badge-info">Real-Time</span>
+          </div>
+
+          <!-- Simulation Controls -->
+          <div class="routing-control-panel">
+            <div class="control-field">
+              <label for="client-region-select">Simulate Client Location</label>
+              <select id="client-region-select" class="select-input">
+                <option value="ap-south-1" selected>🇮🇳 Mumbai (ap-south-1) — 19.07° N, 72.87° E</option>
+                <option value="eu-central-1">🇩🇪 Frankfurt (eu-central-1) — 50.11° N, 8.68° E</option>
+                <option value="us-east-1">🇺🇸 Virginia (us-east-1) — 37.43° N, -78.65° W</option>
+                <option value="ap-northeast-1">🇯🇵 Tokyo (ap-northeast-1) — 35.67° N, 139.65° E</option>
+                <option value="eu-west-1">🇮🇪 London / Dublin (eu-west-1) — 53.34° N, -6.26° W</option>
+                <option value="us-west-2">🇺🇸 Oregon (us-west-2) — 45.52° N, -122.67° W</option>
+              </select>
+            </div>
+
+            <div class="control-field">
+              <label for="selected-file-id">Selected File for CDN Delivery</label>
+              <input type="text" id="selected-file-id" placeholder="Select a file from left or paste File ID" class="text-input">
+            </div>
+
+            <button id="btn-cdn-download" class="btn btn-primary full-width" disabled>
+              ⚡ Request via Pravah Geo-Routing
+            </button>
+          </div>
+
+          <!-- Live Metrics & Inspection Telemetry -->
+          <div class="telemetry-box" id="telemetry-box">
+            <div class="telemetry-grid">
+              <div class="metric-card">
+                <span class="metric-label">Cache State</span>
+                <span class="metric-value" id="metric-cache-state">—</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Total Latency</span>
+                <span class="metric-value" id="metric-latency">—</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Routing Edge</span>
+                <span class="metric-value" id="metric-edge-name">—</span>
+              </div>
+              <div class="metric-card">
+                <span class="metric-label">Haversine Distance</span>
+                <span class="metric-value" id="metric-distance">—</span>
+              </div>
+            </div>
+
+            <!-- Routing Step-by-Step Flow Log -->
+            <div class="trace-log-box">
+              <div class="trace-header">Hop-by-Hop Execution Log</div>
+              <pre class="trace-log" id="trace-log">Awaiting CDN request...</pre>
+            </div>
+
+            <!-- Inline Content Preview -->
+            <div class="preview-box" id="preview-box" style="display: none;">
+              <div class="preview-header">Delivered Content Payload</div>
+              <div class="preview-content" id="preview-content"></div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
