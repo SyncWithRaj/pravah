@@ -52,10 +52,11 @@ export class ReplicationProcessor extends WorkerHost {
     try {
       
       let metadataResponse;
+      const coreApiUrl = process.env.CORE_API_URL || 'http://localhost:3000';
       try {
         const response = await firstValueFrom(
           this.httpService.get(
-            `http://localhost:3000/api/v1/internal/metadata/files/${fileId}`,
+            `${coreApiUrl}/api/v1/internal/metadata/files/${fileId}`,
           )
         );
         metadataResponse = response.data;

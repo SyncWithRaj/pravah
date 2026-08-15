@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  # 1. Pravah Central Core API
+  - job_name: 'pravah-core'
+    metrics_path: '/api/v1/metrics'
+    static_configs:
+      - targets: ['core-app:3000']
+        labels:
+          app: 'pravah-core'
+          role: 'control-plane'
+          region: 'central'
+
+  # 2. Pravah Edge Nodes
+  - job_name: 'pravah-edge'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['edge-app:3001']
+        labels:
+          app: 'pravah-edge'
+          role: 'data-plane'
+          region: 'ap-south-1'
+          edge_id: 'edge-node-01'

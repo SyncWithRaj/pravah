@@ -109,8 +109,64 @@ services:
       - redpanda
       - minio
 
+  # 7. Prometheus (Metrics Scraper & Time-Series DB)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: pravah-prometheus
+    restart: always
+    profiles: ["core", "monitoring"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+  # 8. Grafana Loki (Distributed Log Engine)
+  loki:
+    image: grafana/loki:latest
+    container_name: pravah-loki
+    restart: always
+    profiles: ["core", "monitoring"]
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki-config.yml:/etc/loki/local-config.yaml:ro
+
+  # 9. Promtail (Docker Log Collector & Shipper)
+  promtail:
+    image: grafana/promtail:latest
+    container_name: pravah-promtail
+    restart: always
+    profiles: ["core", "monitoring"]
+    volumes:
+      - ./observability/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  # 10. Grafana Dashboard (Unified Metrics & Logs Visualization)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: pravah-grafana
+    restart: always
+    profiles: ["core", "monitoring"]
+    ports:
+      - "3002:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+      - loki
+
 volumes:
   postgres_data:
   redis_data:
   minio_data:
   redpanda_data:
+  grafana_data:

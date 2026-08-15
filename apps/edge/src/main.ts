@@ -5,6 +5,21 @@ import { Logger } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   
+  app.enableCors({
+    origin: '*',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    exposedHeaders: [
+      'X-CDN-Edge',
+      'X-CDN-Region',
+      'X-CDN-Distance-Km',
+      'X-CDN-Strategy',
+      'ETag',
+      'Content-Range',
+      'Content-Encoding',
+      'Location',
+    ],
+  });
+
   const port = process.env.PORT || 4001;
   const edgeNodeId = process.env.EDGE_NODE_ID || 'edge-node-01';
   

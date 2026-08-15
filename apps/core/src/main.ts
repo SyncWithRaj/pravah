@@ -15,6 +15,21 @@ async function bootstrap() {
     }),
   );
 
+  app.enableCors({
+    origin: '*',
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    exposedHeaders: [
+      'X-CDN-Edge',
+      'X-CDN-Region',
+      'X-CDN-Distance-Km',
+      'X-CDN-Strategy',
+      'ETag',
+      'Content-Range',
+      'Content-Encoding',
+      'Location',
+    ],
+  });
+
   app.setGlobalPrefix('api/v1');
 
   app.connectMicroservice<MicroserviceOptions>({

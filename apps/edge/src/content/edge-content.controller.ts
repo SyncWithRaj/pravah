@@ -18,6 +18,8 @@ import { MinioService } from '../minio/minio.service';
 import { firstValueFrom } from 'rxjs';
 import { v4 as uuidv4 } from 'uuid';
 
+import { MetricsService } from '../metrics/metrics.service';
+
 interface PlacementResponse {
   fileId: string;
   version: number;
@@ -48,6 +50,7 @@ export class EdgeContentController {
     private readonly minioService: MinioService,
     private readonly httpService: HttpService,
     private readonly configService: ConfigService,
+    private readonly metricsService: MetricsService,
   ) {
     this.coreApiUrl = this.configService.get<string>('CORE_API_URL', 'http://localhost:3000');
     this.edgeNodeId = this.configService.get<string>('EDGE_NODE_ID', 'edge-node-01');
@@ -62,35 +65,40 @@ export class EdgeContentController {
     @Headers('x-cache-fill-mode') cacheFillMode: string,
     @Res() res: Response,
   ) {
+    const reqStart = performance.now();
     const versionStr = version.toString();
 
-    
-    
-    
+    // 1. Peer-to-peer fill request from another Edge Node
     if (cacheFillMode === 'peer') {
       const buffer = await this.edgeCacheService.getBinary(fileId, versionStr, 0);
       if (buffer) {
         this.logger.log(`[Peer Mode] [Cache Hit] ${fileId} v${version}`);
+        this.metricsService.cacheHitsTotal.inc();
+        this.metricsService.bytesServedTotal.inc({ source: 'peer_cache' }, buffer.length);
         return res.status(HttpStatus.OK).end(buffer);
       }
       this.logger.log(`[Peer Mode] [Cache Miss] ${fileId} v${version} — returning 404`);
       throw new NotFoundException('Not found in local cache');
     }
 
-    
-    
-    
+    // 2. Direct RAM Cache Hit (Fast path)
     const cached = await this.edgeCacheService.getBinary(fileId, versionStr, 0);
     if (cached) {
+      const durationSec = (performance.now() - reqStart) / 1000;
       this.logger.log(`[Cache Hit] Served ${fileId} v${version} from Edge Cache`);
+      this.metricsService.cacheHitsTotal.inc();
+      this.metricsService.bytesServedTotal.inc({ source: 'ram_cache' }, cached.length);
+      this.metricsService.requestDuration.observe(
+        { cache_result: 'hit', status_code: '200' },
+        durationSec,
+      );
       return res.status(HttpStatus.OK).end(cached);
     }
 
     this.logger.log(`[Cache Miss] ${fileId} v${version} — starting tiered cache fill`);
+    this.metricsService.cacheMissesTotal.inc();
 
-    
-    
-    
+    // 3. Stampede Protection (Distributed Lock)
     const lockValue = uuidv4();
     const lockAcquired = await this.edgeCacheService.acquireStampedeLock(
       fileId,
@@ -99,26 +107,20 @@ export class EdgeContentController {
     );
 
     if (!lockAcquired) {
-      
-      
       this.logger.log(`[Stampede] Lock held by another request for ${fileId} v${version}`);
       await this.sleep(500);
       const retryBuffer = await this.edgeCacheService.getBinary(fileId, versionStr, 0);
       if (retryBuffer) {
         this.logger.log(`[Stampede] Resolved from cache after wait for ${fileId} v${version}`);
+        this.metricsService.cacheHitsTotal.inc();
         return res.status(HttpStatus.OK).end(retryBuffer);
       }
-      
       return this.streamFromOriginDirect(fileId, version, res);
     }
 
-    
     try {
-      
-      
-      
+      // 4. Placement Lookup from Core
       let placement: PlacementResponse | null = null;
-
       try {
         const response = await firstValueFrom(
           this.httpService.get(
@@ -131,9 +133,7 @@ export class EdgeContentController {
         this.logger.error(`[Placement] Lookup failed: ${error.message}`);
       }
 
-      
-      
-      
+      // 5. Tiered Peer Fetch
       if (placement && placement.responsibleReplicas.length > 0) {
         const peers = placement.responsibleReplicas.slice(0, this.peerMaxAttempts);
 
@@ -159,29 +159,35 @@ export class EdgeContentController {
                 `[Peer Fetch] Success from ${peer.edgeId} (${buffer.length} bytes)`,
               );
 
-              
               const metadata = this.buildCacheMetadata(placement);
               await this.edgeCacheService.cacheFile(fileId, versionStr, metadata, buffer);
               this.logger.log(`[Peer Fetch] Cached ${fileId} v${version} locally`);
 
+              const durationSec = (performance.now() - reqStart) / 1000;
+              this.metricsService.peerFetchesTotal.inc({ peer_id: peer.edgeId, status: 'success' });
+              this.metricsService.bytesServedTotal.inc({ source: 'peer_cache' }, buffer.length);
+              this.metricsService.requestDuration.observe(
+                { cache_result: 'peer_fill', status_code: '200' },
+                durationSec,
+              );
+
               return res.status(HttpStatus.OK).end(buffer);
             }
 
-            
             this.logger.log(`[Peer Fetch] ${peer.edgeId} returned 404, trying next`);
+            this.metricsService.peerFetchesTotal.inc({ peer_id: peer.edgeId, status: 'miss' });
           } catch (error: any) {
             this.logger.warn(
               `[Peer Fetch] ${peer.edgeId} failed: ${error.message}, trying next`,
             );
+            this.metricsService.peerFetchesTotal.inc({ peer_id: peer.edgeId, status: 'error' });
           }
         }
 
         this.logger.log(`[Peer Fetch] All peers exhausted for ${fileId} v${version}`);
       }
 
-      
-      
-      
+      // 6. Origin MinIO Fallback
       const storagePath = await this.resolveStoragePath(placement, fileId, version);
 
       if (!storagePath) {
@@ -202,7 +208,6 @@ export class EdgeContentController {
 
       const fullBuffer = Buffer.concat(chunks);
 
-      
       if (fullBuffer.length <= 20 * 1024 * 1024) {
         const metadata = placement
           ? this.buildCacheMetadata(placement)
@@ -210,6 +215,13 @@ export class EdgeContentController {
         await this.edgeCacheService.cacheFile(fileId, versionStr, metadata, fullBuffer);
         this.logger.log(`[Origin Fallback] Cached ${fileId} v${version} locally (${fullBuffer.length} bytes)`);
       }
+
+      const durationSec = (performance.now() - reqStart) / 1000;
+      this.metricsService.bytesServedTotal.inc({ source: 'origin_stream' }, fullBuffer.length);
+      this.metricsService.requestDuration.observe(
+        { cache_result: 'origin_fill', status_code: '200' },
+        durationSec,
+      );
 
       return res.status(HttpStatus.OK).end(fullBuffer);
     } catch (error: any) {
