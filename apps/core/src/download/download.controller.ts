@@ -68,7 +68,7 @@ export class DownloadController {
         user.id,
         fileId,
       );
-      const redirectUrl = `${edge.endpointUrl}/api/v1/edge/content/${fileId}?v=${currentVersion}`;
+      const redirectUrl = `${edge.endpointUrl}/edge/content/${fileId}?v=${currentVersion}`;
 
       res.setHeader('X-CDN-Edge', edge.name);
       res.setHeader('X-CDN-Region', edge.region);

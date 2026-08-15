@@ -94,7 +94,7 @@ export class ReplicationProcessor extends WorkerHost {
 
       await this.edgeCacheService.cacheFile(
         fileId,
-        versionId,
+        version.versionNumber.toString(),
         metadata,
         fullBuffer,
       );
