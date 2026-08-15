@@ -9,7 +9,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "⚡ Cache Hit Ratio (Origin Offload)",
+      "title": "Cache Hit Ratio (Origin Offload)",
       "type": "gauge",
       "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
@@ -37,7 +37,7 @@
     },
     {
       "id": 2,
-      "title": "⏱️ Avg Edge Delivery Latency",
+      "title": "Avg Edge Delivery Latency",
       "type": "stat",
       "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
@@ -63,7 +63,7 @@
     },
     {
       "id": 3,
-      "title": "🖥️ Active Healthy Edge Nodes",
+      "title": "Active Healthy Edge Nodes",
       "type": "stat",
       "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
@@ -89,7 +89,7 @@
     },
     {
       "id": 4,
-      "title": "🌍 Total Geo-Routed Downloads",
+      "title": "Total Geo-Routed Downloads",
       "type": "stat",
       "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
@@ -107,19 +107,19 @@
     },
     {
       "id": 5,
-      "title": "📈 RAM Hits vs Origin Misses (Requests / sec)",
+      "title": "RAM Hits vs Origin Misses (Requests / sec)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
       "targets": [
         {
           "expr": "rate(pravah_edge_cache_hits_total[1m])",
-          "legendFormat": "⚡ RAM Cache Hit (Fast)",
+          "legendFormat": "RAM Cache Hit (Fast)",
           "refId": "A"
         },
         {
           "expr": "rate(pravah_edge_cache_misses_total[1m])",
-          "legendFormat": "⏳ Origin Fetch Miss",
+          "legendFormat": "Origin Fetch Miss",
           "refId": "B"
         }
       ],
@@ -135,7 +135,7 @@
     },
     {
       "id": 6,
-      "title": "🌐 Traffic Routed by Region (Haversine Geo)",
+      "title": "Traffic Routed by Region (Haversine Geo)",
       "type": "timeseries",
       "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
       "datasource": { "type": "prometheus", "uid": "Prometheus" },
@@ -157,7 +157,7 @@
     },
     {
       "id": 7,
-      "title": "🔴 Critical System Errors & Failures (ERROR)",
+      "title": "Critical System Errors & Failures (ERROR)",
       "type": "logs",
       "gridPos": { "h": 7, "w": 24, "x": 0, "y": 14 },
       "datasource": { "type": "loki", "uid": "Loki" },
@@ -178,7 +178,7 @@
     },
     {
       "id": 8,
-      "title": "🔵 CDN Business Operations (Uploads, Cache Hits, Kafka, 302s)",
+      "title": "CDN Business Operations (Uploads, Cache Hits, Kafka, 302s)",
       "type": "logs",
       "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
       "datasource": { "type": "loki", "uid": "Loki" },
@@ -199,7 +199,7 @@
     },
     {
       "id": 9,
-      "title": "⚪ High-Frequency Diagnostics (Heartbeats & Crons)",
+      "title": "High-Frequency Diagnostics (Heartbeats & Crons)",
       "type": "logs",
       "gridPos": { "h": 7, "w": 24, "x": 0, "y": 29 },
       "datasource": { "type": "loki", "uid": "Loki" },
@@ -226,7 +226,7 @@
   "time": { "from": "now-15m", "to": "now" },
   "timepicker": { "refresh_intervals": ["5s", "10s", "30s", "1m"] },
   "timezone": "browser",
-  "title": "Pravah Distributed CDN — Overview & Telemetry",
+  "title": "Pravah Distributed CDN - Overview & Telemetry",
   "uid": "pravah-cdn-overview",
-  "version": 3
+  "version": 4
 }
