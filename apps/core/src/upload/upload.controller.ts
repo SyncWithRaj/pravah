@@ -72,7 +72,9 @@ export class UploadController {
       fileName: file.originalname || 'file',
       chunkIndex,
       totalChunks: result.totalChunks || 1,
-      percentage: Math.round(((chunkIndex + 1) / (result.totalChunks || 1)) * 100),
+      percentage: Math.round(
+        ((chunkIndex + 1) / (result.totalChunks || 1)) * 100,
+      ),
     });
 
     return result;
