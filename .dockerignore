@@ -1,0 +1,15 @@
+node_modules
+apps/core/node_modules
+apps/edge/node_modules
+dist
+apps/core/dist
+apps/edge/dist
+*.tsbuildinfo
+**/*.tsbuildinfo
+.git
+.env
+.env.*
+!.env.example
+npm-debug.log
+yarn-error.log
+pnpm-debug.log

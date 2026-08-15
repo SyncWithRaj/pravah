@@ -1,11 +1,12 @@
 version: '3.8'
 
 services:
-  # 1. Primary Relational Database (PostgreSQL)
+  # 1. Primary Relational Database (PostgreSQL) - Core Only
   postgres:
     image: postgres:16-alpine
     container_name: pravah-postgres
     restart: always
+    profiles: ["core"]
     environment:
       POSTGRES_USER: admin_postgres
       POSTGRES_PASSWORD: postgres_password
@@ -15,21 +16,12 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  # 2. Edge Cache & Distributed Locks (Redis)
-  redis:
-    image: redis:7-alpine
-    container_name: pravah-redis
-    restart: always
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-
-  # 3. Local S3-Compatible Origin Storage (MinIO)
+  # 2. Local S3-Compatible Origin Storage (MinIO) - Core Only
   minio:
     image: minio/minio:latest
     container_name: pravah-minio
     restart: always
+    profiles: ["core"]
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: admin_minio
@@ -40,10 +32,11 @@ services:
     volumes:
       - minio_data:/data
 
-  # 4. Message Broker (Kafka compatible via Redpanda)
+  # 3. Message Broker (Kafka compatible via Redpanda) - Core Only
   redpanda:
     image: docker.redpanda.com/redpandadata/redpanda:latest
     container_name: pravah-redpanda
+    profiles: ["core"]
     command:
       - redpanda
       - start
@@ -56,6 +49,52 @@ services:
       - "9644:9644" # Admin API
     volumes:
       - redpanda_data:/var/lib/redpanda/data
+
+  # 4. Redis - Needed by both Core (Queues) and Edge (Cache)
+  redis:
+    image: redis:7-alpine
+    container_name: pravah-redis
+    restart: always
+    profiles: ["core", "edge"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  # 5. Core Application
+  core-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.core
+    container_name: pravah-core
+    restart: always
+    profiles: ["core"]
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    depends_on:
+      - postgres
+      - minio
+      - redpanda
+      - redis
+
+  # 6. Edge Application
+  edge-app:
+    build:
+      context: .
+      dockerfile: Dockerfile.edge
+    container_name: pravah-edge
+    restart: always
+    profiles: ["edge"]
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+    env_file:
+      - .env
+    depends_on:
+      - redis
 
 volumes:
   postgres_data:

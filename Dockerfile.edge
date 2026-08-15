@@ -1,0 +1,29 @@
+FROM node:22-alpine
+
+# Install pnpm
+RUN npm install -g pnpm
+
+# Set working directory
+WORKDIR /app
+
+# Copy root configurations
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
+# Copy the edge app source code
+COPY apps/edge ./apps/edge
+
+# Install ALL dependencies (including devDependencies for build tools)
+RUN pnpm install --frozen-lockfile
+
+# Build the Edge app from its own directory
+WORKDIR /app/apps/edge
+RUN pnpm exec nest build
+
+# Reset working directory
+WORKDIR /app
+
+# Expose Edge API port
+EXPOSE 3001
+
+# Start Edge app directly using node
+CMD ["node", "apps/edge/dist/main"]
