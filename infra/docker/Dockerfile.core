@@ -13,7 +13,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/core ./apps/core
 
 # Install ALL dependencies (including devDependencies for build tools)
-RUN pnpm install --frozen-lockfile
+RUN pnpm config set minimum-release-age 0 && pnpm install --frozen-lockfile --ignore-scripts
 
 # Generate Prisma client specifically for core
 RUN pnpm --filter core exec prisma generate

@@ -13,7 +13,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/edge ./apps/edge
 
 # Install ALL dependencies (including devDependencies for build tools)
-RUN pnpm install --frozen-lockfile
+RUN pnpm config set minimum-release-age 0 && pnpm install --frozen-lockfile --ignore-scripts
 
 # Build the Edge app from its own directory
 WORKDIR /app/apps/edge
