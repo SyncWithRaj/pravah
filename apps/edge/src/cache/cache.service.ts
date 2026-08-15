@@ -165,14 +165,6 @@ export class EdgeCacheService implements OnModuleInit, OnModuleDestroy {
         .catch((e: Error) =>
           this.logger.error(`Failed to update LRU: ${e.message}`),
         );
-
-      
-      this.kafkaService.emitCacheAccess({
-        fileId,
-        eventType: 'hit',
-        bytesServed: data.length,
-        downloadLatencyMs: latency,
-      });
     }
 
     return data;

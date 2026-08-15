@@ -5,6 +5,7 @@ import { ContentModule } from './content/content.module';
 import { ReplicationModule } from './replication/replication.module';
 import { HeartbeatModule } from './heartbeat/heartbeat.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { KafkaModule } from './kafka/kafka.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { MetricsModule } from './metrics/metrics.module';
       envFilePath: '../../.env',
     }),
     ScheduleModule.forRoot(),
+    KafkaModule,
     ContentModule,
     ReplicationModule,
     HeartbeatModule,

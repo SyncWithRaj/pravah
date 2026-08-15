@@ -16,6 +16,7 @@ import { RoutingModule } from './common/routing/routing.module';
 import { EdgeContentModule } from './edge-content/edge-content.module';
 import { PlacementModule } from './placement/placement.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { TelemetryModule } from './telemetry/telemetry.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { MetricsModule } from './metrics/metrics.module';
     MetadataModule,
     PlacementModule,
     MetricsModule,
+    TelemetryModule,
   ],
   controllers: [AppController],
   providers: [AppService],
