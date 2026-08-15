@@ -71,6 +71,13 @@ services:
     profiles: ["core"]
     ports:
       - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://admin_postgres:postgres_password@postgres:5432/pravah_db?schema=public
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BROKERS=redpanda:9092
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
     env_file:
       - .env
     depends_on:
@@ -91,10 +98,18 @@ services:
       - "3001:3001"
     environment:
       - PORT=3001
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - KAFKA_BROKERS=redpanda:9092
+      - CORE_API_URL=http://core-app:3000
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
     env_file:
       - .env
     depends_on:
       - redis
+      - redpanda
+      - minio
 
 volumes:
   postgres_data:

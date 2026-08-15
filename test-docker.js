@@ -3,7 +3,9 @@ const http = require('http');
 function checkEndpoint(name, url, expectedStatus = [200, 404]) {
   return new Promise((resolve) => {
     console.log(`Testing ${name} at ${url}...`);
+    let timeoutId;
     const req = http.get(url, (res) => {
+      clearTimeout(timeoutId);
       if (expectedStatus.includes(res.statusCode)) {
         console.log(`✅ [PASS] ${name} is running! (Status: ${res.statusCode})`);
         resolve(true);
@@ -14,16 +16,17 @@ function checkEndpoint(name, url, expectedStatus = [200, 404]) {
     });
 
     req.on('error', (err) => {
+      clearTimeout(timeoutId);
       console.log(`❌ [FAIL] ${name} is not reachable. Is the Docker container running?`);
       console.log(`   Error: ${err.message}`);
       resolve(false);
     });
     
-    req.setTimeout(2000, () => {
+    timeoutId = setTimeout(() => {
       console.log(`❌ [FAIL] ${name} connection timed out.`);
-      req.abort();
+      req.destroy();
       resolve(false);
-    });
+    }, 2000);
   });
 }
 
