@@ -1,5 +1,6 @@
 .PHONY: help dev stop restart ui seed migrate logs logs-core logs-edge clean build lint format deploy-core deploy-edge
 
+
 # Default target
 help:
 	@echo "=========================================================="
@@ -42,6 +43,7 @@ ui:
 	python3 -m http.server 8080 --directory dashboard
 
 seed:
+	pnpm --filter core exec prisma db push
 	pnpm --filter core exec prisma db seed
 
 migrate:
