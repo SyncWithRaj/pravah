@@ -1,3 +1,4 @@
+import './tracer';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
@@ -26,6 +27,9 @@ async function bootstrap() {
       'X-CDN-Region',
       'X-CDN-Distance-Km',
       'X-CDN-Strategy',
+      'X-Trace-Id',
+      'traceparent',
+      'tracestate',
       'ETag',
       'Content-Range',
       'Content-Encoding',

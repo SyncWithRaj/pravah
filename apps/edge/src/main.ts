@@ -1,3 +1,4 @@
+import './tracer';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
@@ -14,6 +15,9 @@ async function bootstrap() {
       'X-CDN-Distance-Km',
       'X-CDN-Strategy',
       'X-Cache',
+      'X-Trace-Id',
+      'traceparent',
+      'tracestate',
       'ETag',
       'Content-Range',
       'Content-Encoding',
