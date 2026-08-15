@@ -1,0 +1,57 @@
+services:
+  # 1. Local Edge Redis (In-Memory RAM Cache for Sub-10ms Delivery)
+  edge-redis:
+    image: redis:7-alpine
+    container_name: pravah-edge-redis
+    restart: always
+    ports:
+      - "6380:6379"
+    volumes:
+      - edge_redis_data:/data
+    networks:
+      - pravah-net
+
+  # 2. Pravah Edge Node Service (Data Plane)
+  edge-app:
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.edge
+    container_name: pravah-edge
+    restart: always
+    ports:
+      - "${PORT:-3001}:3001"
+    environment:
+      - PORT=3001
+      - EDGE_NODE_ID=${EDGE_NODE_ID:-edge-node-01}
+      - EDGE_REGION=${EDGE_REGION:-ap-south-1}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CORE_API_URL=${CORE_API_URL:-http://core-app:3000}
+      - KAFKA_BROKERS=${KAFKA_BROKERS:-redpanda:9092}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-minio}
+      - MINIO_PORT=${MINIO_PORT:-9000}
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-admin_minio}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minio_password}
+      - PEER_FETCH_TIMEOUT_MS=2000
+      - PEER_MAX_ATTEMPTS=3
+    networks:
+      - pravah-net
+
+  # 3. Edge Promtail (Ships local Edge logs to Central Core Loki)
+  promtail-edge:
+    image: grafana/promtail:latest
+    container_name: pravah-edge-promtail
+    restart: always
+    volumes:
+      - ../../observability/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - pravah-net
+
+volumes:
+  edge_redis_data:
+
+networks:
+  pravah-net:
+    name: pravah-net
