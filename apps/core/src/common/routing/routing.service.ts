@@ -6,6 +6,8 @@ import {
 import { REGION_COORDINATES } from './region-coordinates';
 import { haversineDistance } from './haversine.util';
 
+import { MetricsService } from '../../metrics/metrics.service';
+
 export interface RoutingDecision {
   edge: EdgeNodeRecord;
   distanceKm: number | null;
@@ -16,7 +18,10 @@ export interface RoutingDecision {
 export class RoutingService {
   private readonly logger = new Logger(RoutingService.name);
 
-  constructor(private readonly healthCheckService: HealthCheckService) {}
+  constructor(
+    private readonly healthCheckService: HealthCheckService,
+    private readonly metricsService: MetricsService,
+  ) {}
 
   selectBestEdge(clientRegion: string | undefined): RoutingDecision | null {
     if (!clientRegion) return null;
@@ -28,6 +33,11 @@ export class RoutingService {
     if (regionMatches.length > 0) {
       const selected =
         regionMatches[Math.floor(Math.random() * regionMatches.length)];
+      this.metricsService.geoRoutingTotal.inc({
+        edge_name: selected.name,
+        edge_region: selected.region,
+        strategy: 'exact-region',
+      });
       return { edge: selected, distanceKm: null, strategy: 'exact-region' };
     }
 
@@ -52,6 +62,12 @@ export class RoutingService {
         closest = node;
       }
     }
+
+    this.metricsService.geoRoutingTotal.inc({
+      edge_name: closest.name,
+      edge_region: closest.region,
+      strategy: 'nearest-geo',
+    });
 
     return {
       edge: closest,

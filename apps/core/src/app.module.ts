@@ -15,6 +15,7 @@ import { ReplicationModule } from './replication/replication.module';
 import { RoutingModule } from './common/routing/routing.module';
 import { EdgeContentModule } from './edge-content/edge-content.module';
 import { PlacementModule } from './placement/placement.module';
+import { MetricsModule } from './metrics/metrics.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { PlacementModule } from './placement/placement.module';
     DownloadModule,
     MetadataModule,
     PlacementModule,
+    MetricsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
