@@ -13,6 +13,7 @@ async function bootstrap() {
       'X-CDN-Region',
       'X-CDN-Distance-Km',
       'X-CDN-Strategy',
+      'X-Cache',
       'ETag',
       'Content-Range',
       'Content-Encoding',
