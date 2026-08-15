@@ -4,7 +4,6 @@ import { HttpModule } from '@nestjs/axios';
 import { ReplicationProcessor } from './replication.processor';
 import { CacheModule } from '../cache/cache.module';
 import { MinioModule } from '../minio/minio.module';
-import { KafkaModule } from '../kafka/kafka.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
@@ -12,7 +11,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     HttpModule,
     CacheModule,
     MinioModule,
-    KafkaModule,
     BullModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

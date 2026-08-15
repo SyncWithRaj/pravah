@@ -100,9 +100,12 @@ export class ReplicationProcessor extends WorkerHost {
       };
 
       
+      const targetVersion =
+        metadataResponse?.currentVersion?.versionNumber?.toString() || '1';
+
       await this.edgeCacheService.cacheFile(
         fileId,
-        versionId,
+        targetVersion,
         metadata,
         fullBuffer,
       );

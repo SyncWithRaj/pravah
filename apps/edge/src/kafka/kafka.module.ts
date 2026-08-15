@@ -1,8 +1,9 @@
-import { Module } from '@nestjs/common';
+import { Module, Global } from '@nestjs/common';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { KafkaService } from './kafka.service';
 
+@Global()
 @Module({
   imports: [
     ClientsModule.registerAsync([
@@ -13,7 +14,7 @@ import { KafkaService } from './kafka.service';
           transport: Transport.KAFKA,
           options: {
             client: {
-              clientId: 'pravah-core',
+              clientId: 'pravah-edge',
               brokers: [
                 configService.get<string>('KAFKA_BROKERS') || 'localhost:19092',
               ],
