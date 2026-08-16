@@ -118,4 +118,25 @@ export class TelemetryGateway
   }) {
     this.server?.emit('cache.invalidated', data);
   }
+
+  // 8. Dead Letter Queue (DLQ) Alert Notification (Phase 7)
+  broadcastDLQAlert(data: {
+    fileId: string;
+    edgeNodeId: string;
+    attempts: number;
+    error: string;
+    timestamp: string;
+  }) {
+    this.server?.emit('dlq.alert', data);
+  }
+
+  // 9. Self-Healing Dynamic Replication Repair Broadcast (Phase 7 Module 2)
+  broadcastReplicationRepaired(data: {
+    fileId: string;
+    deadNodeId: string;
+    replacementNodeId: string;
+    timestamp: string;
+  }) {
+    this.server?.emit('replication.repaired', data);
+  }
 }

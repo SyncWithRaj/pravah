@@ -12,6 +12,8 @@ export class MetricsService implements OnModuleInit {
   public readonly edgeHealthStatus: client.Gauge<string>;
   public readonly replicationJobsTotal: client.Counter<string>;
   public readonly cacheInvalidationsTotal: client.Counter<string>;
+  public readonly dlqEventsTotal: client.Counter<string>;
+  public readonly replicationRepairsTotal: client.Counter<string>;
 
   constructor() {
     this.registry = new client.Registry();
@@ -68,6 +70,22 @@ export class MetricsService implements OnModuleInit {
       name: 'pravah_core_cache_invalidations_total',
       help: 'Total number of cache invalidation events emitted over Kafka',
       labelNames: ['reason'],
+      registers: [this.registry],
+    });
+
+    // 7. Dead Letter Queue (DLQ) Events Counter (Phase 7)
+    this.dlqEventsTotal = new client.Counter({
+      name: 'pravah_core_dlq_events_total',
+      help: 'Total number of events routed to Dead Letter Queue (DLQ)',
+      labelNames: ['topic', 'edge_id', 'action'],
+      registers: [this.registry],
+    });
+
+    // 8. Self-Healing Dynamic Replication Repairs Counter (Phase 7 Module 2)
+    this.replicationRepairsTotal = new client.Counter({
+      name: 'pravah_core_replication_repairs_total',
+      help: 'Total number of dynamic self-healing replication repair jobs dispatched',
+      labelNames: ['dead_edge_id', 'target_edge_id'],
       registers: [this.registry],
     });
   }

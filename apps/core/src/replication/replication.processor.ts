@@ -8,7 +8,9 @@ import {
   CacheMetadata,
 } from '../common/edge-cache/edge-cache.service';
 import { KafkaService } from '../common/kafka/kafka.service';
-import { ReplicationJobStatus } from '@prisma/client';
+import { TelemetryGateway } from '../telemetry/telemetry.gateway';
+import { MetricsService } from '../metrics/metrics.service';
+import { ReplicationJobStatus, Prisma } from '@prisma/client';
 import { ReplicationJobData } from './replication.service';
 
 @Processor('replication.normal', { concurrency: 5 })
@@ -20,6 +22,8 @@ export class ReplicationProcessor extends WorkerHost {
     private readonly minioService: MinioService,
     private readonly edgeCacheService: EdgeCacheService,
     private readonly kafkaService: KafkaService,
+    private readonly telemetryGateway: TelemetryGateway,
+    private readonly metricsService: MetricsService,
   ) {
     super();
   }
@@ -27,9 +31,11 @@ export class ReplicationProcessor extends WorkerHost {
   async process(job: Job<ReplicationJobData>): Promise<void> {
     const { fileId, versionId, edgeNodeId, storagePath } = job.data;
     const startTime = Date.now();
+    const currentAttempt = job.attemptsMade + 1;
+    const maxAttempts = job.opts.attempts ?? 3;
 
     this.logger.log(
-      `Processing replication job: ${fileId} -> edge ${edgeNodeId} (attempt ${job.attemptsMade + 1})`,
+      `Processing replication job: ${fileId} -> edge ${edgeNodeId} (attempt ${currentAttempt}/${maxAttempts})`,
     );
 
     await this.prisma.replicationStatus.update({
@@ -39,7 +45,8 @@ export class ReplicationProcessor extends WorkerHost {
       data: {
         status: ReplicationJobStatus.IN_PROGRESS,
         startedAt: new Date(),
-        attempts: job.attemptsMade + 1,
+        attempts: currentAttempt,
+        payload: job.data as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -66,6 +73,7 @@ export class ReplicationProcessor extends WorkerHost {
             completedAt: new Date(),
             durationMs: Date.now() - startTime,
             lastError: 'Bypassed: Exceeds RAM Limit',
+            isDeadLetter: false,
           },
         });
         return;
@@ -109,6 +117,7 @@ export class ReplicationProcessor extends WorkerHost {
           completedAt: new Date(),
           durationMs,
           lastError: null,
+          isDeadLetter: false,
         },
       });
 
@@ -116,7 +125,7 @@ export class ReplicationProcessor extends WorkerHost {
         fileId,
         edgeNodeId,
         'complete',
-        job.attemptsMade + 1,
+        currentAttempt,
       );
 
       this.logger.log(
@@ -125,6 +134,8 @@ export class ReplicationProcessor extends WorkerHost {
     } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
+      const errorStack = error instanceof Error ? error.stack : undefined;
+      const isFinalAttempt = currentAttempt >= maxAttempts;
 
       await this.prisma.replicationStatus.update({
         where: {
@@ -132,27 +143,61 @@ export class ReplicationProcessor extends WorkerHost {
         },
         data: {
           lastError: errorMessage,
-
-          status:
-            job.attemptsMade + 1 >= (job.opts.attempts ?? 3)
-              ? ReplicationJobStatus.FAILED
-              : ReplicationJobStatus.IN_PROGRESS,
+          status: isFinalAttempt
+            ? ReplicationJobStatus.FAILED
+            : ReplicationJobStatus.IN_PROGRESS,
+          isDeadLetter: isFinalAttempt,
+          deadLetterAt: isFinalAttempt ? new Date() : null,
+          deadLetterReason: isFinalAttempt ? errorMessage : null,
+          payload: job.data as unknown as Prisma.InputJsonValue,
         },
       });
 
-      if (job.attemptsMade + 1 >= (job.opts.attempts ?? 3)) {
+      if (isFinalAttempt) {
+        // 1. Emit Kafka DLQ Event (Diagram 9: Step 10)
+        this.kafkaService.emitReplicationDLQ({
+          fileId,
+          versionId,
+          edgeNodeId,
+          attempts: currentAttempt,
+          maxAttempts,
+          error: errorMessage,
+          stack: errorStack,
+          storagePath,
+          failedAt: new Date().toISOString(),
+          payload: job.data as unknown as Record<string, unknown>,
+        });
+
+        // 2. Emit Kafka Replication Status Changed
         this.kafkaService.emitReplicationStatusChanged(
           fileId,
           edgeNodeId,
           'failed',
-          job.attemptsMade + 1,
+          currentAttempt,
         );
+
+        // 3. Emit Real-time WebSocket Alert to Connected Admin Dashboard
+        this.telemetryGateway.broadcastDLQAlert({
+          fileId,
+          edgeNodeId,
+          attempts: currentAttempt,
+          error: errorMessage,
+          timestamp: new Date().toISOString(),
+        });
+
+        // 4. Increment Prometheus DLQ Counter
+        this.metricsService.dlqEventsTotal.inc({
+          topic: 'file.uploaded.dlq',
+          edge_id: edgeNodeId,
+          action: 'queued',
+        });
+
         this.logger.error(
-          `Replication FAILED after ${job.attemptsMade + 1} attempts: ${fileId} -> edge ${edgeNodeId}: ${errorMessage}`,
+          `Replication MOVED TO DLQ after ${currentAttempt} attempts: ${fileId} -> edge ${edgeNodeId}: ${errorMessage}`,
         );
       } else {
         this.logger.warn(
-          `Replication attempt ${job.attemptsMade + 1} failed: ${fileId} -> edge ${edgeNodeId}: ${errorMessage}. Retrying...`,
+          `Replication attempt ${currentAttempt}/${maxAttempts} failed: ${fileId} -> edge ${edgeNodeId}: ${errorMessage}. Retrying with exponential backoff...`,
         );
       }
 
