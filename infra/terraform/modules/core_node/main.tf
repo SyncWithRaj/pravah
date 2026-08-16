@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 5.0"
+    }
+  }
+}
+
 # Fetch latest Ubuntu 24.04 LTS AMI for the target region
 data "aws_ami" "ubuntu" {
   most_recent = true

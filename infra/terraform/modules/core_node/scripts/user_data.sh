@@ -66,7 +66,10 @@ fi
 docker compose -f infra/docker/docker-compose.core.yml up -d --build
 
 # Run database migrations and seeding
-docker compose -f infra/docker/docker-compose.core.yml exec -T core-app pnpm --filter core exec prisma db push || true
-docker compose -f infra/docker/docker-compose.core.yml exec -T core-app pnpm --filter core exec prisma db seed || true
+docker compose -f infra/docker/docker-compose.core.yml run --rm core-app pnpm --filter core exec prisma db push --schema=prisma/schema.prisma || true
+docker compose -f infra/docker/docker-compose.core.yml run --rm core-app pnpm --filter core exec prisma db seed || true
+docker compose -f infra/docker/docker-compose.core.yml restart core-app
 
 echo "=== Pravah Core Provisioning Complete at $(date) ==="
+
+
