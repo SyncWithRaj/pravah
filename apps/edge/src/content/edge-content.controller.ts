@@ -21,8 +21,8 @@ import { firstValueFrom } from 'rxjs';
 import { v4 as uuidv4 } from 'uuid';
 
 import { MetricsService } from '../metrics/metrics.service';
-
 import { KafkaService } from '../kafka/kafka.service';
+import { trace } from '@opentelemetry/api';
 
 interface PlacementResponse {
   fileId: string;
@@ -75,16 +75,28 @@ export class EdgeContentController {
     const reqStart = performance.now();
     const versionStr = version.toString();
 
+    const activeSpan = trace.getActiveSpan();
+    if (activeSpan) {
+      activeSpan.setAttribute('cdn.file_id', fileId);
+      activeSpan.setAttribute('cdn.version', version);
+      activeSpan.setAttribute('cdn.edge_id', this.edgeNodeId);
+      activeSpan.setAttribute('cdn.region', this.edgeRegion);
+      const traceId = activeSpan.spanContext().traceId;
+      if (traceId) res.setHeader('X-Trace-Id', traceId);
+    }
+
     // 1. Peer-to-peer fill request from another Edge Node
     if (cacheFillMode === 'peer') {
       const buffer = await this.edgeCacheService.getBinary(fileId, versionStr, 0);
       if (buffer) {
         this.logger.log(`[Peer Mode] [Cache Hit] ${fileId} v${version}`);
+        activeSpan?.setAttribute('cdn.cache_state', 'PEER_HIT');
         this.metricsService.cacheHitsTotal.inc();
         this.metricsService.bytesServedTotal.inc({ source: 'peer_cache' }, buffer.length);
         return res.status(HttpStatus.OK).end(buffer);
       }
       this.logger.log(`[Peer Mode] [Cache Miss] ${fileId} v${version} — returning 404`);
+      activeSpan?.setAttribute('cdn.cache_state', 'PEER_MISS');
       throw new NotFoundException('Not found in local cache');
     }
 
@@ -93,6 +105,8 @@ export class EdgeContentController {
     if (cached) {
       const durationSec = (performance.now() - reqStart) / 1000;
       this.logger.log(`[Cache Hit] Served ${fileId} v${version} from Edge Cache`);
+      activeSpan?.setAttribute('cdn.cache_state', 'HIT');
+      activeSpan?.setAttribute('cdn.bytes_served', cached.length);
       this.metricsService.cacheHitsTotal.inc();
       this.metricsService.bytesServedTotal.inc({ source: 'ram_cache' }, cached.length);
       this.metricsService.requestDuration.observe(
@@ -121,6 +135,7 @@ export class EdgeContentController {
     }
 
     this.logger.log(`[Cache Miss] ${fileId} v${version} — starting tiered cache fill`);
+    activeSpan?.setAttribute('cdn.cache_state', 'MISS');
     this.metricsService.cacheMissesTotal.inc();
 
     // 3. Stampede Protection (Distributed Lock)

@@ -1,4 +1,4 @@
-.PHONY: help dev stop restart ui seed migrate logs logs-core logs-edge clean build lint format deploy-core deploy-edge
+.PHONY: help dev stop restart ui seed migrate logs logs-core logs-edge clean build build-all build\:all lint format deploy-core deploy-edge
 
 
 # Default target
@@ -22,6 +22,7 @@ help:
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make build        - Compile all TypeScript packages in monorepo"
+	@echo "  make build-all    - Format, lint, and build all packages (Full CI verification)"
 	@echo "  make lint         - Run ESLint checks"
 	@echo "  make format       - Run Prettier formatter"
 	@echo ""
@@ -63,6 +64,12 @@ clean:
 
 build:
 	pnpm -r build
+
+build-all:
+	pnpm run build:all
+
+build\:all:
+	pnpm run build:all
 
 lint:
 	pnpm run lint

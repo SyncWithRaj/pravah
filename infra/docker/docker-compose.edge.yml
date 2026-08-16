@@ -31,9 +31,10 @@ services:
       - MINIO_ENDPOINT=minio
       - MINIO_PORT=9000
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-admin_minio}
-      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minio_password}
       - PEER_FETCH_TIMEOUT_MS=2000
       - PEER_MAX_ATTEMPTS=3
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
+      - OTEL_SERVICE_NAME=pravah-edge-node-01
     networks:
       - pravah-net
 

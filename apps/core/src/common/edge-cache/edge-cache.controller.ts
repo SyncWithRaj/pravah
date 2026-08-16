@@ -26,7 +26,7 @@ export class EdgeCacheController {
 
   @Post('purge')
   @HttpCode(HttpStatus.OK)
-  async purgeCache(@Body('fileId') fileId: string) {
+  purgeCache(@Body('fileId') fileId: string) {
     if (!fileId) {
       return { success: false, message: 'fileId is required' };
     }

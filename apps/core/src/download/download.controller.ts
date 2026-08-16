@@ -14,6 +14,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { User } from '@prisma/client';
 import { RoutingService } from '../common/routing/routing.service';
+import { trace } from '@opentelemetry/api';
 
 @UseGuards(JwtAuthGuard)
 @Controller('download')
@@ -61,8 +62,23 @@ export class DownloadController {
 
     const routingDecision = this.routingService.selectBestEdge(clientRegion);
 
+    const activeSpan = trace.getActiveSpan();
+    if (activeSpan) {
+      activeSpan.setAttribute('cdn.file_id', fileId);
+      activeSpan.setAttribute('cdn.user_id', user.id);
+      const traceId = activeSpan.spanContext().traceId;
+      if (traceId) res.setHeader('X-Trace-Id', traceId);
+    }
+
     if (routingDecision) {
       const { edge, distanceKm, strategy } = routingDecision;
+
+      if (activeSpan) {
+        activeSpan.setAttribute('cdn.edge_name', edge.name);
+        activeSpan.setAttribute('cdn.edge_region', edge.region);
+        activeSpan.setAttribute('cdn.strategy', strategy);
+        activeSpan.setAttribute('cdn.distance_km', distanceKm ?? 0);
+      }
 
       const currentVersion = await this.downloadService.getCurrentVersion(
         user.id,

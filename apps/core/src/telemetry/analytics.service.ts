@@ -103,7 +103,8 @@ export class AnalyticsService {
     const bandwidthBps = Math.round(this.intervalBytes / 2); // bytes per second
     const rps = Math.round((this.intervalRequests / 2) * 10) / 10;
     const totalReqs = this.totalHits + this.totalMisses;
-    const hitRatio = totalReqs > 0 ? Math.round((this.totalHits / totalReqs) * 100) : 100;
+    const hitRatio =
+      totalReqs > 0 ? Math.round((this.totalHits / totalReqs) * 100) : 100;
 
     this.telemetryGateway.broadcastThroughput({
       bandwidthBps,

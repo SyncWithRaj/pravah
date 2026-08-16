@@ -521,6 +521,11 @@ btnCdnDownload.addEventListener('click', async () => {
       logTrace(`[Step 3] ⚠️ CACHE MISS: Edge fetched from MinIO Origin & cached in RAM in ${edgeLatency}ms!`);
     }
 
+    const traceId = res.headers.get('x-trace-id') || res.headers.get('X-Trace-Id');
+    if (traceId) {
+      logTrace(`[Step 4] 🔍 OpenTelemetry Trace ID: ${traceId} (Jaeger: http://localhost:16686/trace/${traceId})`);
+    }
+
     const contentType = res.headers.get('Content-Type') || '';
     const blob = await res.blob();
 

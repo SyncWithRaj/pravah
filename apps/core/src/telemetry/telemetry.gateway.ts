@@ -14,7 +14,9 @@ import { Server, Socket } from 'socket.io';
   },
   transports: ['websocket', 'polling'],
 })
-export class TelemetryGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class TelemetryGateway
+  implements OnGatewayConnection, OnGatewayDisconnect
+{
   private readonly logger = new Logger(TelemetryGateway.name);
 
   @WebSocketServer()
@@ -33,7 +35,7 @@ export class TelemetryGateway implements OnGatewayConnection, OnGatewayDisconnec
   }
 
   @SubscribeMessage('ping')
-  handlePing(client: Socket): string {
+  handlePing(_client: Socket): string {
     return 'pong';
   }
 
