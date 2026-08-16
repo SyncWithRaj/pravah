@@ -9,6 +9,8 @@
     "fix": "pnpm --filter core format && pnpm --filter core lint",
     "build": "pnpm -r build",
     "build:all": "pnpm run fix && pnpm run build",
-    "dashboard": "python3 -m http.server 8080 --directory dashboard"
+    "dashboard": "python3 -m http.server 8080 --directory dashboard",
+    "benchmark": "bash benchmarks/run_all.sh"
   }
 }
+
