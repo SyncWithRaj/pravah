@@ -118,4 +118,15 @@ export class TelemetryGateway
   }) {
     this.server?.emit('cache.invalidated', data);
   }
+
+  // 8. Dead Letter Queue (DLQ) Alert Notification (Phase 7)
+  broadcastDLQAlert(data: {
+    fileId: string;
+    edgeNodeId: string;
+    attempts: number;
+    error: string;
+    timestamp: string;
+  }) {
+    this.server?.emit('dlq.alert', data);
+  }
 }

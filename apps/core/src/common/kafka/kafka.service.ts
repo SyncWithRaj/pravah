@@ -2,6 +2,7 @@ import { Injectable, Inject, OnModuleInit, Logger } from '@nestjs/common';
 import { ClientKafka } from '@nestjs/microservices';
 import { FileUploadedEvent } from './events/file-uploaded.event';
 import { CacheAccessEvent } from './events/cache-access.event';
+import { ReplicationDLQEvent } from './events/replication-dlq.event';
 
 @Injectable()
 export class KafkaService implements OnModuleInit {
@@ -59,6 +60,14 @@ export class KafkaService implements OnModuleInit {
     });
     this.logger.log(
       `Emitted replication.status_changed: ${fileId} -> ${edgeNodeId} (${status})`,
+    );
+  }
+
+  emitReplicationDLQ(event: ReplicationDLQEvent) {
+    this.kafkaClient.emit('file.uploaded.dlq', event);
+    this.kafkaClient.emit('replication.dlq', event);
+    this.logger.error(
+      `Emitted Dead Letter Queue (DLQ) event for file ${event.fileId} -> edge ${event.edgeNodeId} after ${event.attempts} failed attempts`,
     );
   }
 }

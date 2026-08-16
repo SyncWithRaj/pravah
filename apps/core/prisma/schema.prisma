@@ -267,37 +267,43 @@ model EdgeNode {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// REPLICATION STATUS (Phase 4)
+// REPLICATION STATUS (Phase 4 & Phase 7)
 // Tracks the replication progress of a specific file version to a specific edge node.
-// Created by the Kafka consumer, processed by BullMQ workers.
+// Created by the Kafka consumer, processed by BullMQ workers with exponential backoff & DLQ.
 // ─────────────────────────────────────────────────────────────────────────────
 
 model ReplicationStatus {
-  id            String               @id @default(uuid())
-  status        ReplicationJobStatus @default(PENDING)
+  id               String               @id @default(uuid())
+  status           ReplicationJobStatus @default(PENDING)
 
-  // Retry tracking
-  attempts      Int                  @default(0)        // Number of attempts made (max 3 before DLQ)
-  lastError     String?                                 // Stores the failure reason for debugging
+  // Retry & Dead Letter Queue (DLQ) tracking
+  attempts         Int                  @default(0)        // Number of attempts made (max 3 before DLQ)
+  lastError        String?                                 // Stores the failure reason for debugging
+  isDeadLetter     Boolean              @default(false)    // True if all retries failed and moved to DLQ
+  deadLetterAt     DateTime?                               // Timestamp when moved to DLQ
+  deadLetterReason String?                                 // Stacktrace / detailed failure reason
+  replayedAt       DateTime?                               // When manually replayed via admin API
+  payload          Json?                                   // Snapshot of job payload for replayability
 
   // Timing metrics — enables "Which edge is slow?" dashboards
-  startedAt     DateTime?                               // When the BullMQ worker picked up the job
-  completedAt   DateTime?                               // When replication finished successfully
-  durationMs    Int?                                    // Total time taken in milliseconds
+  startedAt        DateTime?                               // When the BullMQ worker picked up the job
+  completedAt      DateTime?                               // When replication finished successfully
+  durationMs       Int?                                    // Total time taken in milliseconds
 
   // Relations
-  fileId        String
-  file          File                 @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  fileId           String
+  file             File                 @relation(fields: [fileId], references: [id], onDelete: Cascade)
 
-  edgeNodeId    String
-  edgeNode      EdgeNode             @relation(fields: [edgeNodeId], references: [id], onDelete: Cascade)
+  edgeNodeId       String
+  edgeNode         EdgeNode             @relation(fields: [edgeNodeId], references: [id], onDelete: Cascade)
 
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
 
   @@unique([fileId, edgeNodeId])                        // One replication record per file per edge node
   @@index([fileId])
   @@index([edgeNodeId])
   @@index([status])                                     // Fast query for pending/failed jobs (worker polling)
+  @@index([isDeadLetter])                               // Fast DLQ lookup
   @@map("replication_status")
 }
