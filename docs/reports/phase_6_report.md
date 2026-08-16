@@ -201,8 +201,221 @@ pravah-redpanda        Up (healthy)    0.0.0.0:19092->19092/tcp
 
 ---
 
-## 6. Next Steps
+## 6. Multi-Region AWS Infrastructure as Code (Terraform)
 
-With Phase 6 Observability and Distributed Tracing complete, the remaining milestones are:
-1. **Multi-Region Terraform Infrastructure (`infra/terraform/`)**: Provisioning AWS Mumbai (`ap-south-1`), US-East (`us-east-1`), and EU-Central (`eu-central-1`) infrastructure.
-2. **Phase 7: Hardening & Fault Tolerance**: Implementing Dead Letter Queues (DLQ) with $3\times$ exponential backoff and dynamic replication repair on node crash.
+To transition from single-host container simulations to a true distributed global CDN, Phase 6 provisions a production-grade multi-region cloud infrastructure on Amazon Web Services using **Terraform (HCL2)**.
+
+### 6.1 Multi-Region Cloud Architecture & Topology
+
+```text
+                               ┌────────────────────────────────────────────────────────┐
+                               │               AWS MULTI-REGION TOPOLOGY                │
+                               └──────────────────────────┬─────────────────────────────┘
+                                                          │
+              ┌───────────────────────────────────────────┼───────────────────────────────────────────┐
+              │                                           │                                           │
+              ▼                                           ▼                                           ▼
+┌───────────────────────────┐               ┌───────────────────────────┐               ┌───────────────────────────┐
+│   ASIA PACIFIC (MUMBAI)   │               │   US EAST (N. VIRGINIA)   │               │      EUROPE (FRANKFURT)   │
+│       (ap-south-1)        │               │        (us-east-1)        │               │       (eu-central-1)      │
+├───────────────────────────┤               ├───────────────────────────┤               ├───────────────────────────┤
+│ • EC2: Core Node          │               │ • EC2: Edge Node 02       │               │ • EC2: Edge Node 03       │
+│   (t3.medium - 4GB RAM)   │               │   (t3.small - 2GB RAM)    │               │   (t3.small - 2GB RAM)    │
+│ • PostgreSQL (DB & Meta)  │               │ • Edge Content API (:3001)│               │ • Edge Content API (:3001)│
+│ • MinIO S3 Origin Store   │               │ • Edge Redis RAM Cache    │               │ • Edge Redis RAM Cache    │
+│ • Redpanda / Kafka Bus    │               │ • Promtail Log Shipper    │               │ • Promtail Log Shipper    │
+│ • Prometheus & Grafana    │               └───────────────────────────┘               └───────────────────────────┘
+│ • Jaeger Distributed Trace│
+│ • EC2: Edge Node 01       │
+│   (t3.small - Local Edge) │
+└───────────────────────────┘
+```
+
+### 6.2 Modular Terraform Directory Structure (`infra/terraform/`)
+
+```text
+infra/terraform/
+├── main.tf                    # Root orchestration, multi-region AWS provider aliases
+├── variables.tf               # Global variable declarations (instance types, SSH keys, regions)
+├── outputs.tf                 # Global endpoint export & terminal verification summary banner
+├── terraform.tfvars.example   # Template for developer configuration overrides
+├── README.md                  # Complete deployment, verification, and teardown walkthrough
+├── modules/
+│   ├── core_node/             # Central Control Plane & Origin Module (ap-south-1)
+│   │   ├── main.tf            # VPC, Subnet, IGW, Route Table, Security Group, EC2, Elastic IP
+│   │   ├── variables.tf       # Module input variables
+│   │   ├── outputs.tf         # Module outputs (public IP, API URL, Grafana, Jaeger)
+│   │   └── scripts/
+│   │       └── user_data.sh   # Cloud-init first-boot script (Docker, git clone, compose up)
+│   └── edge_node/             # Reusable Global Edge Point-of-Presence Module
+│       ├── main.tf            # Isolated VPC, Subnet, Port 3001 Security Group, EC2, Elastic IP
+│       ├── variables.tf       # Dynamic node parameters (edge_node_id, edge_region, core_public_ip)
+│       ├── outputs.tf         # Edge content URL & regional routing tags
+│       └── scripts/
+│           └── user_data.sh   # Cloud-init edge script connecting to Central Core IP
+```
+
+### 6.3 Technical Details of Core & Edge Modules
+
+| Component | Central Core Module (`modules/core_node/`) | Global Edge Module (`modules/edge_node/`) |
+| :--- | :--- | :--- |
+| **AWS Region** | `ap-south-1` (Mumbai) | `us-east-1` (Virginia), `eu-central-1` (Frankfurt) |
+| **Instance Type** | `t3.medium` (2 vCPU, 4GB RAM) | `t3.small` (2 vCPU, 2GB RAM) |
+| **EBS Storage** | 30 GB gp3 NVMe SSD | 20 GB gp3 NVMe SSD |
+| **Inbound Firewall Ports** | `22` (SSH), `3000` (API), `9000-9001` (MinIO), `19092` (Kafka), `3002` (Grafana), `9090` (Prometheus), `16686` (Jaeger), `4317-4318` (OTLP) | `22` (SSH), `3001` (Edge Content Delivery API) |
+| **IP Persistence** | Static AWS Elastic IP (EIP) | Static AWS Elastic IP (EIP) |
+| **Cloud-Init (`user_data.sh`)** | Auto-installs Docker CE, clones repo, generates `.env`, executes `docker-compose.core.yml`, runs Prisma schema push & database seeding. | Auto-installs Docker CE, injects `EDGE_NODE_ID`, `EDGE_REGION`, and Central `CORE_PUBLIC_IP`, executes `docker-compose.edge.yml`. |
+
+### 6.4 Cross-Module IP Dependency Injection
+
+Terraform manages dependency graphs so that Edge nodes automatically discover the Core Control Plane IP without hardcoding:
+
+```hcl
+# In infra/terraform/main.tf
+module "edge_us_east" {
+  source = "./modules/edge_node"
+  providers = { aws = aws.us_east }
+
+  edge_node_id   = "edge-node-02"
+  edge_region    = "us-east-1"
+  core_public_ip = module.core_node.public_ip  # Dynamically receives Mumbai's Elastic IP!
+  depends_on     = [module.core_node]
+}
+```
+
+---
+
+## 7. Continuous Integration & Continuous Deployment (CI/CD)
+
+To maintain strict code quality and provide automated cloud lifecycle management, Phase 6 establishes two dedicated GitHub Actions pipelines in `.github/workflows/`.
+
+### 7.1 Continuous Integration Pipeline (`.github/workflows/ci.yml`)
+
+Triggers automatically on every `push` and `pull_request` to `main`:
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#1e293b', 'primaryTextColor': '#f8fafc', 'primaryBorderColor': '#3b82f6', 'lineColor': '#64748b', 'secondaryColor': '#0f172a', 'tertiaryColor': '#1e1e2e'}}}%%
+flowchart LR
+    Trigger["Git Push / Pull Request"] --> Job1["Job 1: build-and-test"]
+    Trigger --> Job2["Job 2: terraform-validate"]
+    
+    subgraph Job1Steps["Node.js & TypeScript Verification"]
+        direction TB
+        J1_1["1. Checkout Code"]
+        J1_2["2. Setup pnpm & Node 22"]
+        J1_3["3. Install Dependencies (frozen-lockfile)"]
+        J1_4["4. Generate Prisma Client"]
+        J1_5["5. ESLint & Prettier Check"]
+        J1_6["6. pnpm run build (Core & Edge)"]
+        J1_1 --> J1_2 --> J1_3 --> J1_4 --> J1_5 --> J1_6
+    end
+    
+    subgraph Job2Steps["Terraform Infrastructure Validation"]
+        direction TB
+        J2_1["1. Checkout Code"]
+        J2_2["2. Setup Terraform 1.15.6"]
+        J2_3["3. Check Formatting (terraform fmt)"]
+        J2_4["4. Init Backend-less (terraform init)"]
+        J2_5["5. Validate Syntax (terraform validate)"]
+        J2_1 --> J2_2 --> J2_3 --> J2_4 --> J2_5
+    end
+    
+    Job1 --> Job1Steps
+    Job2 --> Job2Steps
+    Job1Steps --> Success["✅ All Checks Pass (Merge Approved)"]
+    Job2Steps --> Success
+```
+
+### 7.2 Continuous Deployment Pipeline (`.github/workflows/cd.yml`)
+
+Provides an intentional, one-click cloud orchestration workflow in the GitHub Actions UI (`workflow_dispatch`):
+
+* **Action `plan`**: Dry-run preview testing AWS authentication and verifying resource changes with $0 cost.
+* **Action `apply`**: Provisions the multi-region cluster on AWS (32 cloud resources) and outputs live URLs.
+* **Action `destroy`**: Wipes all EC2 instances, EBS volumes, and Elastic IPs to eliminate ongoing cloud costs.
+
+---
+
+## 8. Live AWS Cloud Deployment Verification Results
+
+The multi-region architecture was deployed to live AWS production and fully validated end-to-end.
+
+### 8.1 Provisioning Summary
+* **Execution Command**: `terraform apply`
+* **Result**: `Apply complete! Resources: 32 added, 0 changed, 0 destroyed.`
+* **Live Endpoints Provisioned**:
+  * **Central Control Plane (Mumbai `ap-south-1`)**: `http://13.202.10.136:3000`
+  * **Grafana Dashboard**: `http://13.202.10.136:3002`
+  * **Jaeger Distributed Tracing**: `http://13.202.10.136:16686`
+  * **MinIO Storage Console**: `http://13.202.10.136:9001`
+  * **Asia Edge Node 01 (Mumbai `ap-south-1`)**: `http://13.234.64.34:3001`
+  * **North America Edge Node 02 (Virginia `us-east-1`)**: `http://100.59.135.0:3001`
+  * **Europe Edge Node 03 (Frankfurt `eu-central-1`)**: `http://18.194.155.226:3001`
+
+### 8.2 End-to-End Live Cluster Verification Trace
+
+```text
+=== 1. Checking Core Health ===
+HTTP 200 OK: {"status": "ok", "service": "pravah-core", "timestamp": "2026-08-16T12:38:27.989Z"}
+
+=== 2. Authenticating User ===
+POST /api/v1/auth/register -> HTTP 201 Created (User ID: b339654b-f9c9-433b-960e-a27a0dd57395)
+POST /api/v1/auth/login    -> HTTP 200 OK (JWT Bearer Token Issued)
+
+=== 3. Initializing Chunked Resumable Upload ===
+POST /api/v1/upload/init   -> HTTP 201 Created (File ID: e77a7254-865e-4386-a96a-dd0cbbdbc249)
+
+=== 4. Uploading Chunk 0 & Assembly ===
+PUT  /api/v1/upload/e77a.../chunk/0 -> HTTP 200 OK (Checksum verified)
+POST /api/v1/upload/complete        -> HTTP 200 OK (Assembled in MinIO S3 & Kafka replication event emitted)
+
+=== 5. Multi-Region GeoDNS Redirection Tests ===
+[Client in North America (us-east-1)]
+  GET /api/v1/download/e77a... -> HTTP/1.1 302 Found
+  X-CDN-Edge: Virginia Edge
+  X-CDN-Region: us-east-1
+  X-CDN-Strategy: exact-region
+  Location: http://100.59.135.0:3001/edge/content/e77a...
+
+[Client in Europe (eu-central-1)]
+  GET /api/v1/download/e77a... -> HTTP/1.1 302 Found
+  X-CDN-Edge: Frankfurt Edge
+  X-CDN-Region: eu-central-1
+  X-CDN-Strategy: exact-region
+  Location: http://18.194.155.226:3001/edge/content/e77a...
+
+[Client in Asia (ap-south-1)]
+  GET /api/v1/download/e77a... -> HTTP/1.1 302 Found
+  X-CDN-Edge: Mumbai Edge
+  X-CDN-Region: ap-south-1
+  X-CDN-Strategy: exact-region
+  Location: http://13.234.64.34:3001/edge/content/e77a...
+
+=== ALL 3 CONTINENTS GEO-ROUTING TESTS PASSED (100% SUCCESS) ===
+```
+
+### 8.3 Clean Cloud Teardown
+* **Execution Command**: `terraform destroy`
+* **Result**: `Destroy complete! Resources: 32 destroyed.`
+* **Billing Impact**: 100% of EC2 instances, EBS volumes, and Elastic IPs released with zero ongoing costs.
+
+---
+
+## 9. Conclusion & Transition to Phase 7
+
+Phase 6 successfully elevated Pravah from a local development cluster into a **fully observable, multi-region cloud Content Delivery Network**.
+
+### Complete Phase 6 Deliverables:
+1. ✅ **Prometheus & Grafana**: Cluster-wide metric collection and visual monitoring dashboards.
+2. ✅ **Loki & Promtail**: Centralized log streaming and aggregation across microservices.
+3. ✅ **WebSocket Telemetry Gateway**: Real-time push updates for chunk uploads, cache hits, and replication queue depth.
+4. ✅ **OpenTelemetry & Jaeger**: Distributed end-to-end tracing waterfalls with W3C header context propagation.
+5. ✅ **Terraform Multi-Region IaC**: Production infrastructure blueprints across Mumbai, Virginia, and Frankfurt.
+6. ✅ **GitHub Actions CI/CD**: Automated linting, building, Terraform validation, and one-click cloud deployment.
+
+### Next Roadmap Milestone: Phase 7 (Hardening & Fault Tolerance)
+With multi-region deployment and observability complete, Phase 7 focuses on **resilience under extreme failure conditions**:
+* **Kafka $3\times$ Exponential Backoff & Dead Letter Queue (DLQ)** with manual replay API.
+* **Automatic Consistent Hash Ring Self-Healing & Replication Repair** on edge node crash.
+* **High-Throughput Concurrency Benchmarks** measuring RPS and p95/p99 latencies under load.
+
