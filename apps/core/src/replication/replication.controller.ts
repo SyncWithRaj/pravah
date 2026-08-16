@@ -18,6 +18,35 @@ export class ReplicationController {
     return this.processFileEvent(message);
   }
 
+  @MessagePattern('edge.health_changed')
+  async handleEdgeHealthChanged(@Payload() message: unknown) {
+    let edgeId: string | undefined;
+    let newStatus: string | undefined;
+
+    if (typeof message === 'object' && message !== null) {
+      const msg = message as Record<string, unknown>;
+      if (typeof msg.edgeId === 'string') {
+        edgeId = msg.edgeId;
+        newStatus =
+          typeof msg.newStatus === 'string' ? msg.newStatus : undefined;
+      } else if (typeof msg.value === 'object' && msg.value !== null) {
+        const val = msg.value as Record<string, unknown>;
+        if (typeof val.edgeId === 'string') {
+          edgeId = val.edgeId;
+          newStatus =
+            typeof val.newStatus === 'string' ? val.newStatus : undefined;
+        }
+      }
+    }
+
+    if (edgeId && newStatus === 'DOWN') {
+      this.logger.warn(
+        `[Failover] Edge node ${edgeId} reported DOWN. Triggering dynamic replication repair...`,
+      );
+      return this.replicationService.handleEdgeCrashFailover(edgeId);
+    }
+  }
+
   private async processFileEvent(message: unknown) {
     let fileId: string | undefined;
     let versionId: string | undefined;
@@ -97,5 +126,10 @@ export class ReplicationController {
         error instanceof Error ? error.message : 'Unknown error';
       return { success: false, message: errorMessage };
     }
+  }
+
+  @Post('failover/:edgeId')
+  async triggerFailover(@Param('edgeId') edgeId: string) {
+    return this.replicationService.handleEdgeCrashFailover(edgeId);
   }
 }

@@ -129,4 +129,14 @@ export class TelemetryGateway
   }) {
     this.server?.emit('dlq.alert', data);
   }
+
+  // 9. Self-Healing Dynamic Replication Repair Broadcast (Phase 7 Module 2)
+  broadcastReplicationRepaired(data: {
+    fileId: string;
+    deadNodeId: string;
+    replacementNodeId: string;
+    timestamp: string;
+  }) {
+    this.server?.emit('replication.repaired', data);
+  }
 }
