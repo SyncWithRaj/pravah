@@ -48,8 +48,17 @@ export class DlqController {
     if (!event) {
       throw new NotFoundException(`DLQ event with ID ${id} not found`);
     }
-    return event;
+    return {
+      ...event,
+      file: event.file
+        ? {
+            ...event.file,
+            totalSize: Number(event.file.totalSize),
+          }
+        : null,
+    };
   }
+
 
   @Post('replay')
   async replayDLQEvent(
