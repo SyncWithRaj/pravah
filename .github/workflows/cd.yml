@@ -1,0 +1,68 @@
+name: CD - Multi-Region Cloud Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Terraform Action to perform'
+        required: true
+        default: 'apply'
+        type: choice
+        options:
+          - 'apply'
+          - 'destroy'
+          - 'plan'
+      ssh_key_name:
+        description: 'EC2 Key Pair Name in AWS'
+        required: true
+        default: 'pravah-key'
+
+jobs:
+  deploy:
+    name: Terraform ${{ github.event.inputs.action }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+
+    steps:
+      - name: Checkout Codebase
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform CLI
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Initialize Terraform
+        run: terraform init
+
+      - name: Create Terraform Variables File
+        run: |
+          cat <<EOF > terraform.tfvars
+          aws_key_name       = "${{ github.event.inputs.ssh_key_name }}"
+          core_instance_type = "t3.medium"
+          edge_instance_type = "t3.small"
+          core_region        = "ap-south-1"
+          github_repo_url    = "https://github.com/${{ github.repository }}.git"
+          allowed_ssh_cidr   = "0.0.0.0/0"
+          EOF
+
+      - name: Terraform Plan
+        if: ${{ github.event.inputs.action == 'plan' }}
+        run: terraform plan
+
+      - name: Terraform Apply (Deploy Global CDN)
+        if: ${{ github.event.inputs.action == 'apply' }}
+        run: terraform apply -auto-approve
+
+      - name: Terraform Destroy (Teardown & Stop Charges)
+        if: ${{ github.event.inputs.action == 'destroy' }}
+        run: terraform destroy -auto-approve

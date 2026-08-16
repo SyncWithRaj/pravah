@@ -10,6 +10,7 @@ on:
 
 jobs:
   build-and-test:
+    name: Build & Test Node.js Services
     runs-on: ubuntu-latest
 
     steps:
@@ -39,3 +40,28 @@ jobs:
 
       - name: Build Application
         run: pnpm run build
+
+  terraform-validate:
+    name: Validate Terraform Infrastructure
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.6
+
+      - name: Check Terraform Formatting
+        run: terraform fmt -check -recursive
+
+      - name: Initialize Terraform (Backend-less)
+        run: terraform init -backend=false
+
+      - name: Validate Terraform Code
+        run: terraform validate
