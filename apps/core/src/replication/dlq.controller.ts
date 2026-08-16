@@ -59,7 +59,6 @@ export class DlqController {
     };
   }
 
-
   @Post('replay')
   async replayDLQEvent(
     @Body()
