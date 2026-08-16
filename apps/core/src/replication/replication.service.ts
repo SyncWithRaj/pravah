@@ -4,6 +4,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { HealthCheckService } from '../common/health-check/health-check.service';
 import { HashRing } from '../common/replication/hash-ring';
+import { MetricsService } from '../metrics/metrics.service';
 import { ReplicationJobStatus, Prisma, EdgeNodeStatus } from '@prisma/client';
 
 type ReplicationStatusWithNode = Prisma.ReplicationStatusGetPayload<{
@@ -32,6 +33,7 @@ export class ReplicationService {
     private readonly replicationQueue: Queue,
     private readonly prisma: PrismaService,
     private readonly healthCheckService: HealthCheckService,
+    private readonly metricsService: MetricsService,
   ) {}
 
   async dispatchReplication(
@@ -150,20 +152,37 @@ export class ReplicationService {
     });
   }
 
-  async retryFailedJob(replicationId: string): Promise<void> {
+  // ─────────────────────────────────────────────────────────────────────────
+  // DLQ MANAGEMENT (Phase 7: Diagram 9)
+  // ─────────────────────────────────────────────────────────────────────────
+
+  async getDLQEvents(): Promise<FailedJobWithNodeAndFile[]> {
+    return this.prisma.replicationStatus.findMany({
+      where: {
+        OR: [{ isDeadLetter: true }, { status: ReplicationJobStatus.FAILED }],
+      },
+      include: { edgeNode: true, file: true },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  async getDLQEventById(id: string): Promise<FailedJobWithNodeAndFile | null> {
+    return this.prisma.replicationStatus.findUnique({
+      where: { id },
+      include: { edgeNode: true, file: true },
+    });
+  }
+
+  async replayDLQEvent(
+    replicationId: string,
+  ): Promise<{ success: boolean; message: string; replicationId: string }> {
     const record = await this.prisma.replicationStatus.findUnique({
       where: { id: replicationId },
       include: { edgeNode: true, file: true },
     });
 
     if (!record) {
-      throw new Error(`Replication record ${replicationId} not found`);
-    }
-
-    if (record.status !== ReplicationJobStatus.FAILED) {
-      throw new Error(
-        `Replication record ${replicationId} is not in FAILED state`,
-      );
+      throw new Error(`DLQ record ${replicationId} not found`);
     }
 
     const latestVersion = await this.prisma.fileVersion.findFirst({
@@ -172,7 +191,7 @@ export class ReplicationService {
     });
 
     if (!latestVersion) {
-      throw new Error(`No version found for file ${record.fileId}`);
+      throw new Error(`No file version found for file ${record.fileId}`);
     }
 
     await this.prisma.replicationStatus.update({
@@ -180,6 +199,8 @@ export class ReplicationService {
       data: {
         status: ReplicationJobStatus.PENDING,
         attempts: 0,
+        isDeadLetter: false,
+        replayedAt: new Date(),
         lastError: null,
         startedAt: null,
         completedAt: null,
@@ -206,7 +227,71 @@ export class ReplicationService {
     });
 
     this.logger.log(
-      `Retried replication job ${replicationId} -> ${record.edgeNode.name}`,
+      `Replayed DLQ replication job ${replicationId} for file ${record.fileId} -> ${record.edgeNode.name}`,
     );
+
+    this.metricsService.dlqEventsTotal.inc({
+      topic: 'file.uploaded.dlq',
+      edge_id: record.edgeNodeId,
+      action: 'replayed',
+    });
+
+    return {
+      success: true,
+      message: `Replication job for file ${record.fileId} replayed to ${record.edgeNode.name}`,
+      replicationId,
+    };
+  }
+
+  async replayAllDLQEvents(): Promise<{
+    replayedCount: number;
+    replayedIds: string[];
+  }> {
+    const deadItems = await this.getDLQEvents();
+    const replayedIds: string[] = [];
+
+    for (const item of deadItems) {
+      try {
+        await this.replayDLQEvent(item.id);
+        replayedIds.push(item.id);
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+        this.logger.error(`Failed to replay DLQ item ${item.id}: ${errorMsg}`);
+      }
+    }
+
+    return {
+      replayedCount: replayedIds.length,
+      replayedIds,
+    };
+  }
+
+  async purgeDLQEvent(
+    replicationId: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const record = await this.prisma.replicationStatus.findUnique({
+      where: { id: replicationId },
+    });
+
+    if (!record) {
+      throw new Error(`DLQ record ${replicationId} not found`);
+    }
+
+    await this.prisma.replicationStatus.update({
+      where: { id: replicationId },
+      data: {
+        isDeadLetter: false,
+        deadLetterReason: 'Purged by Admin',
+      },
+    });
+
+    return {
+      success: true,
+      message: `DLQ record ${replicationId} purged successfully`,
+    };
+  }
+
+  async retryFailedJob(replicationId: string): Promise<void> {
+    await this.replayDLQEvent(replicationId);
   }
 }
