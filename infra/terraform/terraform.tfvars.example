@@ -1,0 +1,20 @@
+# ==============================================================================
+# Pravah Distributed CDN — Example Terraform Variables Configuration
+# Copy this file to terraform.tfvars and customize with your AWS settings.
+# ==============================================================================
+
+# AWS Key Pair name attached to EC2 instances for SSH access
+aws_key_name = "pravah-key"
+
+# Instance types
+core_instance_type = "t3.medium"
+edge_instance_type = "t3.small"
+
+# Primary AWS Region for Core Control Plane & MinIO Origin
+core_region = "ap-south-1"
+
+# GitHub Repository to clone on instances
+github_repo_url = "https://github.com/SyncWithRaj/pravah.git"
+
+# Restrict SSH access to your specific IP for production security (e.g., "203.0.113.50/32")
+allowed_ssh_cidr = "0.0.0.0/0"

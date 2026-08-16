@@ -37,3 +37,14 @@ CREDENTIALS.txt
 # API Testing
 pravah-api-tests/
 TODO.md
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+!*.tfvars.example
+*.tfvars.json
+.terraform.lock.hcl
