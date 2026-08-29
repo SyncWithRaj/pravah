@@ -43,11 +43,14 @@ enum TranscodeStatus {
 }
 
 // Supported output qualities matching our FFmpeg pipeline spec
+// Only qualities at or below the source resolution are generated (no upscaling)
 enum TranscodeQuality {
   Q_1080P
   Q_720P
   Q_480P
   Q_360P
+  Q_240P
+  Q_144P
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
