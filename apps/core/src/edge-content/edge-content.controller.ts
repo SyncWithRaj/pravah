@@ -4,17 +4,18 @@ import {
   Param,
   Query,
   Res,
+  Req,
   Logger,
   NotFoundException,
   InternalServerErrorException,
   ParseIntPipe,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import { Readable } from 'stream';
 import { EdgeCacheService } from '../common/edge-cache/edge-cache.service';
 import { MinioService } from '../common/minio/minio.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { v4 as uuidv4 } from 'uuid';
+import * as crypto from 'crypto';
 
 @Controller('edge/content')
 export class EdgeContentController {
@@ -25,6 +26,99 @@ export class EdgeContentController {
     private readonly minioService: MinioService,
     private readonly prisma: PrismaService,
   ) {}
+
+  @Get(':fileId/hls/*')
+  async getHlsContent(
+    @Param('fileId') fileId: string,
+    @Query('v') versionQuery: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const versionNum = versionQuery ? parseInt(versionQuery, 10) : 1;
+    const versionStr = versionNum.toString();
+    const urlParts = req.url.split('/hls/');
+    const rawSubpath = urlParts[1]?.split('?')[0] || 'master.m3u8';
+
+    const isSegment = rawSubpath.endsWith('.ts');
+    const isPlaylist = rawSubpath.endsWith('.m3u8');
+    const contentType = isSegment
+      ? 'video/MP2T'
+      : isPlaylist
+        ? 'application/vnd.apple.mpegurl'
+        : 'application/octet-stream';
+    const cacheControl = isSegment
+      ? 'public, max-age=31536000, immutable'
+      : 'public, max-age=60';
+    const ttlSeconds = isSegment ? 86400 : 60;
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader(
+      'Access-Control-Allow-Headers',
+      'Range, Origin, Accept, X-Requested-With, Content-Type',
+    );
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', cacheControl);
+
+    const cachedBuffer = await this.edgeCacheService.getHlsContent(
+      fileId,
+      versionStr,
+      rawSubpath,
+    );
+
+    if (cachedBuffer) {
+      res.setHeader('X-Cache', 'HIT');
+      return res.status(200).end(cachedBuffer);
+    }
+
+    res.setHeader('X-Cache', 'MISS');
+
+    try {
+      const file = await this.prisma.file.findUnique({
+        where: { id: fileId },
+        include: {
+          versions: {
+            where: { versionNumber: versionNum },
+          },
+        },
+      });
+
+      if (!file || !file.versions[0]) {
+        throw new NotFoundException('File or version not found');
+      }
+
+      const versionId = file.versions[0].id;
+      const minioKey = `hls/${file.ownerId}/${fileId}/${versionId}/${rawSubpath}`;
+
+      const stream = await this.minioService.getObjectStream(minioKey);
+      if (!stream) {
+        throw new NotFoundException('HLS content not found at origin');
+      }
+
+      const chunks: Buffer[] = [];
+      await new Promise<void>((resolve, reject) => {
+        stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+        stream.on('end', () => resolve());
+        stream.on('error', (err: Error) => reject(err));
+      });
+
+      const fullBuffer = Buffer.concat(chunks);
+
+      void this.edgeCacheService
+        .cacheHlsContent(fileId, versionStr, rawSubpath, fullBuffer, ttlSeconds)
+        .catch((e: Error) =>
+          this.logger.error(`Failed to cache HLS ${rawSubpath}: ${e.message}`),
+        );
+
+      return res.status(200).end(fullBuffer);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Not found';
+      this.logger.warn(
+        `HLS fetch failed for ${fileId}/${rawSubpath}: ${errMsg}`,
+      );
+      return res.status(404).json({ error: 'HLS stream not found' });
+    }
+  }
 
   @Get(':fileId')
   async getEdgeContent(
@@ -66,7 +160,7 @@ export class EdgeContentController {
       throw new NotFoundException(`File version not found`);
     }
 
-    const lockValue = uuidv4();
+    const lockValue = crypto.randomUUID();
     const acquiredLock = await this.edgeCacheService.acquireStampedeLock(
       fileId,
       versionStr,
