@@ -160,6 +160,8 @@ export class MetadataService {
     if (!fileVersion) throw new NotFoundException('Version not found');
 
     return {
+      versionId: fileVersion.id,
+      versionNumber: fileVersion.versionNumber,
       storagePath: fileVersion.storagePath,
       size: fileVersion.size.toString(),
       checksum: fileVersion.checksum,

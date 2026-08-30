@@ -6,19 +6,20 @@ import {
   Param,
   Query,
   Res,
+  Req,
   Headers,
   Logger,
   NotFoundException,
   ParseIntPipe,
   HttpStatus,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Response, Request } from 'express';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { EdgeCacheService, CacheMetadata } from '../cache/cache.service';
 import { MinioService } from '../minio/minio.service';
 import { firstValueFrom } from 'rxjs';
-import { v4 as uuidv4 } from 'uuid';
+import * as crypto from 'crypto';
 
 import { MetricsService } from '../metrics/metrics.service';
 import { KafkaService } from '../kafka/kafka.service';
@@ -63,6 +64,89 @@ export class EdgeContentController {
     this.edgeRegion = this.configService.get<string>('EDGE_REGION', 'ap-south-1');
     this.peerTimeout = this.configService.get<number>('PEER_FETCH_TIMEOUT_MS', 2000);
     this.peerMaxAttempts = this.configService.get<number>('PEER_MAX_ATTEMPTS', 3);
+  }
+
+  @Get(':fileId/hls/*')
+  async getHlsContent(
+    @Param('fileId') fileId: string,
+    @Query('v') versionQuery: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const versionStr = versionQuery ? versionQuery : '1';
+    const urlParts = req.url.split('/hls/');
+    const rawSubpath = urlParts[1]?.split('?')[0] || 'master.m3u8';
+
+    const isSegment = rawSubpath.endsWith('.ts');
+    const isPlaylist = rawSubpath.endsWith('.m3u8');
+    const contentType = isSegment
+      ? 'video/MP2T'
+      : isPlaylist
+        ? 'application/vnd.apple.mpegurl'
+        : 'application/octet-stream';
+    const cacheControl = isSegment
+      ? 'public, max-age=31536000, immutable'
+      : 'public, max-age=60';
+    const ttlSeconds = isSegment ? 86400 : 60;
+
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Range, Origin, Accept, X-Requested-With, Content-Type');
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', cacheControl);
+    res.setHeader('X-CDN-Edge', this.edgeNodeId);
+    res.setHeader('X-CDN-Region', this.edgeRegion);
+
+    const cachedBuffer = await this.edgeCacheService.getHlsContent(
+      fileId,
+      versionStr,
+      rawSubpath,
+    );
+
+    if (cachedBuffer) {
+      res.setHeader('X-Cache', 'HIT');
+      this.metricsService.cacheHitsTotal.inc();
+      this.metricsService.bytesServedTotal.inc({ source: 'edge_cache' }, cachedBuffer.length);
+      return res.status(HttpStatus.OK).end(cachedBuffer);
+    }
+
+    res.setHeader('X-Cache', 'MISS');
+    this.metricsService.cacheMissesTotal.inc();
+
+    try {
+      const metaRes = await firstValueFrom(
+        this.httpService.get(
+          `${this.coreApiUrl}/api/v1/internal/metadata/files/${fileId}/versions/${versionStr}`,
+        ),
+      );
+      const ownerId = metaRes.data?.file?.ownerId || metaRes.data?.ownerId;
+      const versionId = metaRes.data?.id || metaRes.data?.versionId || `v${versionStr}`;
+
+      const minioKey = `hls/${ownerId}/${fileId}/${versionId}/${rawSubpath}`;
+      const stream = await this.minioService.getObjectStream(minioKey);
+
+      const chunks: Buffer[] = [];
+      await new Promise<void>((resolve, reject) => {
+        stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+        stream.on('end', () => resolve());
+        stream.on('error', (err: Error) => reject(err));
+      });
+
+      const fullBuffer = Buffer.concat(chunks);
+
+      void this.edgeCacheService
+        .cacheHlsContent(fileId, versionStr, rawSubpath, fullBuffer, ttlSeconds)
+        .catch((e: Error) =>
+          this.logger.error(`Failed to cache HLS ${rawSubpath}: ${e.message}`),
+        );
+
+      this.metricsService.bytesServedTotal.inc({ source: 'origin' }, fullBuffer.length);
+      return res.status(HttpStatus.OK).end(fullBuffer);
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : 'Not found';
+      this.logger.warn(`HLS fetch failed for ${fileId}/${rawSubpath}: ${errMsg}`);
+      return res.status(HttpStatus.NOT_FOUND).json({ error: 'HLS stream not found' });
+    }
   }
 
   @Get(':fileId')
@@ -139,7 +223,7 @@ export class EdgeContentController {
     this.metricsService.cacheMissesTotal.inc();
 
     // 3. Stampede Protection (Distributed Lock)
-    const lockValue = uuidv4();
+    const lockValue = crypto.randomUUID();
     const lockAcquired = await this.edgeCacheService.acquireStampedeLock(
       fileId,
       versionStr,

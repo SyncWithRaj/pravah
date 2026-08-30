@@ -10,7 +10,7 @@ import { MinioService } from '../common/minio/minio.service';
 import { ConfigService } from '@nestjs/config';
 import { Readable, PassThrough } from 'stream';
 import { EdgeCacheService } from '../common/edge-cache/edge-cache.service';
-import { v4 as uuidv4 } from 'uuid';
+import * as crypto from 'crypto';
 
 export interface DownloadResult {
   isNotModified?: boolean;
@@ -237,7 +237,7 @@ export class DownloadService {
     const isEligible =
       this.isCacheable(metadata.contentType, metadata.size) && !rangeHeader;
     let locked = false;
-    const lockValue = uuidv4();
+    const lockValue = crypto.randomUUID();
 
     if (isEligible) {
       locked = await this.edgeCacheService.acquireStampedeLock(

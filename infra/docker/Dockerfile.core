@@ -1,7 +1,7 @@
 FROM node:22-alpine
 
-# Install pnpm
-RUN npm install -g pnpm
+# Install ffmpeg and pnpm
+RUN apk add --no-cache ffmpeg && npm install -g pnpm
 
 # Set working directory
 WORKDIR /app
