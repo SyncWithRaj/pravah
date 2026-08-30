@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pravah-redpanda
+  namespace: pravah-system
+  labels:
+    app: pravah-redpanda
+spec:
+  ports:
+    - port: 9092
+      name: kafka
+    - port: 9644
+      name: admin
+  clusterIP: None
+  selector:
+    app: pravah-redpanda
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pravah-redpanda
+  namespace: pravah-system
+  labels:
+    app: pravah-redpanda
+spec:
+  serviceName: pravah-redpanda
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pravah-redpanda
+  template:
+    metadata:
+      labels:
+        app: pravah-redpanda
+    spec:
+      containers:
+        - name: redpanda
+          image: docker.redpanda.com/redpandadata/redpanda:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - rpk
+            - redpanda
+            - start
+            - "--smp"
+            - "1"
+            - "--memory"
+            - "512M"
+            - "--overprovisioned"
+            - "--node-id"
+            - "0"
+            - "--kafka-addr"
+            - "PLAINTEXT://0.0.0.0:9092"
+            - "--advertise-kafka-addr"
+            - "PLAINTEXT://pravah-redpanda:9092"
+            - "--set"
+            - "redpanda.auto_create_topics_enabled=true"
+          ports:
+            - containerPort: 9092
+              name: kafka
+            - containerPort: 9644
+              name: admin
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "2Gi"
+          readinessProbe:
+            httpGet:
+              path: /v1/status/ready
+              port: 9644
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /v1/status/ready
+              port: 9644
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 3
+          volumeMounts:
+            - name: redpanda-storage
+              mountPath: /var/lib/redpanda/data
+  volumeClaimTemplates:
+    - metadata:
+        name: redpanda-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
