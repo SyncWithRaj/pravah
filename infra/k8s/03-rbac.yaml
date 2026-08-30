@@ -1,0 +1,44 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pravah-core-sa
+  namespace: pravah-system
+  labels:
+    app.kubernetes.io/name: pravah-core-sa
+    app.kubernetes.io/part-of: pravah
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pravah-edge-sa
+  namespace: pravah-system
+  labels:
+    app.kubernetes.io/name: pravah-edge-sa
+    app.kubernetes.io/part-of: pravah
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pravah-pod-reader
+  namespace: pravah-system
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "endpoints", "configmaps"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pravah-core-pod-reader-binding
+  namespace: pravah-system
+subjects:
+  - kind: ServiceAccount
+    name: pravah-core-sa
+    namespace: pravah-system
+  - kind: ServiceAccount
+    name: pravah-edge-sa
+    namespace: pravah-system
+roleRef:
+  kind: Role
+  name: pravah-pod-reader
+  apiGroup: rbac.authorization.k8s.io
