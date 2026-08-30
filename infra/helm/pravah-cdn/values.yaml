@@ -1,0 +1,84 @@
+global:
+  environment: production
+  domain: pravah.io
+
+core:
+  replicaCount: 3
+  image:
+    repository: pravah-core-app
+    tag: latest
+    pullPolicy: IfNotPresent
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2048Mi
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 25
+    targetCPUUtilizationPercentage: 75
+    targetMemoryUtilizationPercentage: 80
+
+edge:
+  replicaCount: 3
+  image:
+    repository: pravah-edge-app
+    tag: latest
+    pullPolicy: IfNotPresent
+  region: ap-south-1
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 2000m
+      memory: 2048Mi
+  ramCache:
+    sizeLimit: 1Gi
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 100
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: "500m"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+  hosts:
+    - host: cdn.pravah.io
+      paths:
+        - path: /edge
+          pathType: Prefix
+          service: edge
+        - path: /api
+          pathType: Prefix
+          service: core
+    - host: api.pravah.io
+      paths:
+        - path: /
+          pathType: Prefix
+          service: core
+  tls:
+    - secretName: pravah-tls-cert
+      hosts:
+        - cdn.pravah.io
+        - api.pravah.io
+
+persistence:
+  postgres:
+    storageSize: 10Gi
+  redis:
+    storageSize: 5Gi
+  redpanda:
+    storageSize: 10Gi
+  minio:
+    storageSize: 50Gi
