@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pravah-core-service
+  namespace: pravah-system
+  labels:
+    app.kubernetes.io/name: pravah-core-service
+    app.kubernetes.io/component: control-plane
+    app.kubernetes.io/part-of: pravah
+spec:
+  type: ClusterIP
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: http-api
+      protocol: TCP
+  selector:
+    app: pravah-core

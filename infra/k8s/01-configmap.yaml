@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pravah-config
+  namespace: pravah-system
+  labels:
+    app.kubernetes.io/name: pravah-config
+    app.kubernetes.io/part-of: pravah
+data:
+  NODE_ENV: "production"
+  LOG_LEVEL: "info"
+  PORT_CORE: "3000"
+  PORT_EDGE: "3001"
+  CORE_API_URL: "http://pravah-core-service.pravah-system.svc.cluster.local:3000"
+  
+  # Redis Configuration
+  REDIS_HOST: "pravah-redis.pravah-system.svc.cluster.local"
+  REDIS_PORT: "6379"
+  
+  # Kafka / Redpanda Event Bus
+  KAFKA_BROKERS: "pravah-redpanda.pravah-system.svc.cluster.local:9092"
+  KAFKA_CLIENT_ID: "pravah-k8s-cluster"
+  KAFKA_GROUP_ID: "pravah-k8s-group"
+  
+  # MinIO Object Storage
+  MINIO_ENDPOINT: "pravah-minio.pravah-system.svc.cluster.local"
+  MINIO_PORT: "9000"
+  MINIO_BUCKET_NAME: "pravah-origin"
+  MINIO_USE_SSL: "false"
+  
+  # Edge Node Parameters
+  DEFAULT_EDGE_REGION: "ap-south-1"
+  PEER_FETCH_TIMEOUT_MS: "2000"
+  PEER_MAX_ATTEMPTS: "3"
+  MAX_CACHE_SIZE_MB: "2048"
+  
+  # Video Transcoding Config
+  HLS_SEGMENT_DURATION: "4"
+  TRANSCODE_MAX_CONCURRENCY: "4"
+  
+  # OpenTelemetry & Distributed Tracing
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://pravah-jaeger.pravah-system.svc.cluster.local:4318"

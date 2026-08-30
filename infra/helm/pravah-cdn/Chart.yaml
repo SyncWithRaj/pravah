@@ -1,0 +1,15 @@
+apiVersion: v2
+name: pravah-cdn
+description: Enterprise Distributed Edge CDN & Adaptive Video Streaming Engine
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - cdn
+  - edge-computing
+  - video-transcoding
+  - hls
+  - distributed-cache
+maintainers:
+  - name: Pravah CDN Team
+    email: dev@pravah.io

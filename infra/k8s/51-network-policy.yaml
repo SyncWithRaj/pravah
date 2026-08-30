@@ -1,0 +1,120 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pravah-core-policy
+  namespace: pravah-system
+spec:
+  podSelector:
+    matchLabels:
+      app: pravah-core
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow traffic from Ingress controller and Edge Nodes
+    - from:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app: pravah-edge
+      ports:
+        - protocol: TCP
+          port: 3000
+  egress:
+    # Allow Core to communicate with Postgres, Redis, Kafka, MinIO, and DNS
+    - to:
+        - podSelector:
+            matchLabels:
+              app: pravah-postgres
+        - podSelector:
+            matchLabels:
+              app: pravah-redis
+        - podSelector:
+            matchLabels:
+              app: pravah-redpanda
+        - podSelector:
+            matchLabels:
+              app: pravah-minio
+      ports:
+        - protocol: TCP
+          port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 9092
+        - protocol: TCP
+          port: 9000
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pravah-edge-policy
+  namespace: pravah-system
+spec:
+  podSelector:
+    matchLabels:
+      app: pravah-edge
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow public edge traffic from Ingress controller and peer Edge nodes
+    - from:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+        - podSelector:
+            matchLabels:
+              app: pravah-edge
+      ports:
+        - protocol: TCP
+          port: 3001
+  egress:
+    # Allow Edge to communicate with Core, Redis, MinIO, Kafka, and peer Edge nodes
+    - to:
+        - podSelector:
+            matchLabels:
+              app: pravah-core
+        - podSelector:
+            matchLabels:
+              app: pravah-redis
+        - podSelector:
+            matchLabels:
+              app: pravah-minio
+        - podSelector:
+            matchLabels:
+              app: pravah-redpanda
+        - podSelector:
+            matchLabels:
+              app: pravah-edge
+      ports:
+        - protocol: TCP
+          port: 3000
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 9000
+        - protocol: TCP
+          port: 9092
+        - protocol: TCP
+          port: 3001
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53

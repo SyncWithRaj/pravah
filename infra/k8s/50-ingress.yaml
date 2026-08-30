@@ -1,0 +1,54 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: pravah-ingress
+  namespace: pravah-system
+  labels:
+    app.kubernetes.io/name: pravah-ingress
+    app.kubernetes.io/part-of: pravah
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/proxy-body-size: "500m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, PUT, POST, DELETE, HEAD, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,X-CustomHeader,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Authorization,Range,x-chunk-checksum,x-cache-fill-mode"
+    nginx.ingress.kubernetes.io/cors-expose-headers: "Content-Length,Content-Range,ETag,X-CDN-Edge,X-CDN-Region,X-CDN-Distance-Km,X-CDN-Strategy,X-Cache,X-Trace-Id"
+spec:
+  tls:
+    - hosts:
+        - cdn.pravah.io
+        - api.pravah.io
+      secretName: pravah-tls-cert
+  rules:
+    - host: cdn.pravah.io
+      http:
+        paths:
+          - path: /edge
+            pathType: Prefix
+            backend:
+              service:
+                name: pravah-edge-service
+                port:
+                  number: 3001
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: pravah-core-service
+                port:
+                  number: 3000
+    - host: api.pravah.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: pravah-core-service
+                port:
+                  number: 3000
