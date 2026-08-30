@@ -17,6 +17,7 @@ import { EdgeContentModule } from './edge-content/edge-content.module';
 import { PlacementModule } from './placement/placement.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
+import { TranscodingModule } from './transcoding/transcoding.module';
 
 @Module({
   imports: [
@@ -42,6 +43,7 @@ import { TelemetryModule } from './telemetry/telemetry.module';
     PlacementModule,
     MetricsModule,
     TelemetryModule,
+    TranscodingModule,
   ],
   controllers: [AppController],
   providers: [AppService],

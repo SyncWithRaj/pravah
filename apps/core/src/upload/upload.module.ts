@@ -4,9 +4,10 @@ import { UploadService } from './upload.service';
 
 import { KafkaModule } from '../common/kafka/kafka.module';
 import { EdgeCacheModule } from '../common/edge-cache/edge-cache.module';
+import { TranscodingModule } from '../transcoding/transcoding.module';
 
 @Module({
-  imports: [KafkaModule, EdgeCacheModule],
+  imports: [KafkaModule, EdgeCacheModule, TranscodingModule],
   controllers: [UploadController],
   providers: [UploadService],
 })

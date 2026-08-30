@@ -13,7 +13,7 @@ import { FileStatus, ChunkStatus } from '@prisma/client';
 import { KafkaService } from '../common/kafka/kafka.service';
 import { ConfigService } from '@nestjs/config';
 import { EdgeCacheService } from '../common/edge-cache/edge-cache.service';
-import { v4 as uuidv4 } from 'uuid';
+import { TranscodingService } from '../transcoding/transcoding.service';
 
 @Injectable()
 export class UploadService {
@@ -23,6 +23,7 @@ export class UploadService {
     private readonly kafkaService: KafkaService,
     private readonly configService: ConfigService,
     private readonly edgeCacheService: EdgeCacheService,
+    private readonly transcodingService: TranscodingService,
   ) {}
 
   async initUpload(userId: string, dto: InitUploadDto) {
@@ -335,7 +336,7 @@ export class UploadService {
         });
 
       this.kafkaService.emitFileUploaded({
-        eventId: uuidv4(),
+        eventId: crypto.randomUUID(),
         eventType:
           nextVersionNumber > 1 ? 'file.version_created' : 'file.uploaded',
         fileId: updatedFile.id,
@@ -354,6 +355,16 @@ export class UploadService {
       if (nextVersionNumber > 1) {
         this.kafkaService.emitCacheInvalidate(updatedFile.id);
       }
+
+      // Queue video transcoding if the file is a video type
+      await this.transcodingService.queueTranscoding(
+        updatedFile.id,
+        version.id,
+        updatedFile.ownerId,
+        destinationKey,
+        updatedFile.mimeType,
+        Number(finalSize),
+      );
 
       return {
         message: 'Upload completed and file assembled successfully',

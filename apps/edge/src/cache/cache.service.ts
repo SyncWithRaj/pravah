@@ -326,4 +326,27 @@ export class EdgeCacheService implements OnModuleInit, OnModuleDestroy {
       `Evicted file ${fileId} (${versionKeys.length} versions) from edge cache`,
     );
   }
+
+  async getHlsContent(
+    fileId: string,
+    version: string,
+    subpath: string,
+  ): Promise<Buffer | null> {
+    return this.redis.getBuffer(`hls:${fileId}:${version}:${subpath}`);
+  }
+
+  async cacheHlsContent(
+    fileId: string,
+    version: string,
+    subpath: string,
+    buffer: Buffer,
+    ttlSeconds: number = 86400,
+  ): Promise<void> {
+    await this.redis.set(
+      `hls:${fileId}:${version}:${subpath}`,
+      buffer,
+      'EX',
+      ttlSeconds,
+    );
+  }
 }

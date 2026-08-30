@@ -3,6 +3,10 @@ import { ClientKafka } from '@nestjs/microservices';
 import { FileUploadedEvent } from './events/file-uploaded.event';
 import { CacheAccessEvent } from './events/cache-access.event';
 import { ReplicationDLQEvent } from './events/replication-dlq.event';
+import {
+  VideoProcessingRequestedEvent,
+  VideoTranscodedEvent,
+} from './events/video-processing.event';
 
 @Injectable()
 export class KafkaService implements OnModuleInit {
@@ -68,6 +72,20 @@ export class KafkaService implements OnModuleInit {
     this.kafkaClient.emit('replication.dlq', event);
     this.logger.error(
       `Emitted Dead Letter Queue (DLQ) event for file ${event.fileId} -> edge ${event.edgeNodeId} after ${event.attempts} failed attempts`,
+    );
+  }
+
+  emitVideoProcessingRequested(event: VideoProcessingRequestedEvent) {
+    this.kafkaClient.emit('video.processing_requested', event);
+    this.logger.log(
+      `Emitted video.processing_requested for file: ${event.fileId}`,
+    );
+  }
+
+  emitVideoTranscoded(event: VideoTranscodedEvent) {
+    this.kafkaClient.emit('video.transcoded', event);
+    this.logger.log(
+      `Emitted video.transcoded for file: ${event.fileId} (${event.resolutions.join(', ')}, ${event.totalSegments} segments)`,
     );
   }
 }
