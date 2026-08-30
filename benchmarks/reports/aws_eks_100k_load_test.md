@@ -78,6 +78,6 @@
 To prevent ongoing charges on your AWS credits, run the automated destroy script:
 
 ```bash
-bash infra/terraform/test_k8s_100k_rps/destroy.sh
+bash infra/terraform/eks-load-test/destroy.sh
 ```
 This tears down the EKS cluster, EC2 instances, VPC, and ECR repositories.
