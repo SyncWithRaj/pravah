@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pravah-edge
+  namespace: pravah-system
+  labels:
+    app.kubernetes.io/name: pravah-edge
+    app.kubernetes.io/component: data-plane
+    app.kubernetes.io/part-of: pravah
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 2
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: pravah-edge
+  template:
+    metadata:
+      labels:
+        app: pravah-edge
+        app.kubernetes.io/name: pravah-edge
+        app.kubernetes.io/component: data-plane
+    spec:
+      serviceAccountName: pravah-edge-sa
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values: ["pravah-edge"]
+                topologyKey: "kubernetes.io/hostname"
+      containers:
+        - name: edge-app
+          image: pravah-edge-app:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3001
+              name: http-edge
+          envFrom:
+            - configMapRef:
+                name: pravah-config
+            - secretRef:
+                name: pravah-secrets
+          env:
+            - name: PORT
+              value: "3001"
+            - name: EDGE_NODE_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: EDGE_REGION
+              value: "ap-south-1"
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2048Mi"
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: 3001
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: 3001
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5"]
+          volumeMounts:
+            - name: edge-ram-cache
+              mountPath: /tmp/pravah-edge-cache
+      volumes:
+        - name: edge-ram-cache
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
