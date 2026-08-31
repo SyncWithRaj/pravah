@@ -4,7 +4,17 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
-import { JwtStrategy } from './jwt.strategy';
+import { JwtStrategy } from './strategies/jwt.strategy';
+import {
+  ApiKeyController,
+  AdminApiKeyController,
+} from './api-key/api-key.controller';
+import { ApiKeyService } from './api-key/api-key.service';
+import { RolesGuard } from './guards/roles.guard';
+import { ApiKeyGuard } from './guards/api-key.guard';
+import { InterServiceGuard } from './guards/inter-service.guard';
+import { UnifiedAuthGuard } from './guards/unified-auth.guard';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @Module({
   imports: [
@@ -20,8 +30,26 @@ import { JwtStrategy } from './jwt.strategy';
       inject: [ConfigService],
     }),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy],
-  exports: [JwtStrategy, PassportModule],
+  controllers: [AuthController, ApiKeyController, AdminApiKeyController],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    JwtAuthGuard,
+    ApiKeyService,
+    RolesGuard,
+    ApiKeyGuard,
+    InterServiceGuard,
+    UnifiedAuthGuard,
+  ],
+  exports: [
+    JwtStrategy,
+    JwtAuthGuard,
+    PassportModule,
+    ApiKeyService,
+    RolesGuard,
+    ApiKeyGuard,
+    InterServiceGuard,
+    UnifiedAuthGuard,
+  ],
 })
 export class AuthModule {}
