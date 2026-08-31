@@ -5,9 +5,16 @@ import { HealthCheckService } from './health-check.service';
 import { HealthCheckController } from './health-check.controller';
 import { KafkaModule } from '../kafka/kafka.module';
 import { PrismaModule } from '../../prisma/prisma.module';
+import { AuthModule } from '../../auth/auth.module';
 
 @Module({
-  imports: [ConfigModule, ScheduleModule.forRoot(), KafkaModule, PrismaModule],
+  imports: [
+    ConfigModule,
+    ScheduleModule.forRoot(),
+    KafkaModule,
+    PrismaModule,
+    AuthModule,
+  ],
   controllers: [HealthCheckController],
   providers: [HealthCheckService],
   exports: [HealthCheckService],

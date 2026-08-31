@@ -7,8 +7,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { MetadataService } from './metadata.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
+import { JwtAuthGuard, CurrentUser } from '../auth';
 import { User } from '@prisma/client';
 import { GetFilesQueryDto } from './dto/get-files-query.dto';
 

@@ -1,7 +1,11 @@
-import { Controller, Post, Get, Body, Logger } from '@nestjs/common';
+import { Controller, Post, Get, Body, Logger, UseGuards } from '@nestjs/common';
 import { HealthCheckService } from './health-check.service';
+import { UnifiedAuthGuard, RolesGuard, Roles } from '../../auth';
+import { Role } from '@prisma/client';
 
 @Controller('admin/health')
+@UseGuards(UnifiedAuthGuard, RolesGuard)
+@Roles(Role.ADMIN)
 export class HealthCheckController {
   private readonly logger = new Logger(HealthCheckController.name);
 

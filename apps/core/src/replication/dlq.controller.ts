@@ -8,10 +8,15 @@ import {
   NotFoundException,
   BadRequestException,
   Logger,
+  UseGuards,
 } from '@nestjs/common';
 import { ReplicationService } from './replication.service';
+import { UnifiedAuthGuard, RolesGuard, Roles } from '../auth';
+import { Role } from '@prisma/client';
 
 @Controller('admin/dlq')
+@UseGuards(UnifiedAuthGuard, RolesGuard)
+@Roles(Role.ADMIN)
 export class DlqController {
   private readonly logger = new Logger(DlqController.name);
 

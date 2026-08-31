@@ -14,8 +14,10 @@ datasource db {
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum Role {
-  USER
   ADMIN
+  STREAMER
+  VIEWER
+  USER
 }
 
 // Tracks where a file upload currently stands in its lifecycle
@@ -68,12 +70,37 @@ model User {
   
   // Relations
   files        File[]
+  apiKeys      ApiKey[]
   
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   
   @@index([email])
   @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// API KEY
+// Machine-to-machine, CI/CD, and Edge proxy authentication with SHA-256 hashes
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ApiKey {
+  id          String    @id @default(uuid())
+  name        String
+  keyHash     String    @unique                          // SHA-256 hash — never plaintext
+  keyPrefix   String                                     // e.g. "prv_live_" for display
+  role        Role      @default(STREAMER)
+  userId      String?
+  user        User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime?
+  isActive    Boolean   @default(true)
+  lastUsedAt  DateTime?
+  
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([keyHash])
+  @@map("api_keys")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -16,13 +16,13 @@ import { UploadService } from './upload.service';
 import { InitUploadDto } from './dto/init-upload.dto';
 import { UploadChunkDto } from './dto/upload-chunk.dto';
 import { CompleteUploadDto } from './dto/complete-upload.dto';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
-import { User } from '@prisma/client';
+import { UnifiedAuthGuard, RolesGuard, Roles, CurrentUser } from '../auth';
+import { User, Role } from '@prisma/client';
 
 import { TelemetryGateway } from '../telemetry/telemetry.gateway';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(UnifiedAuthGuard, RolesGuard)
+@Roles(Role.STREAMER, Role.ADMIN)
 @Controller('upload')
 export class UploadController {
   constructor(

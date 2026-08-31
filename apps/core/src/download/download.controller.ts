@@ -10,8 +10,7 @@ import {
 } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { DownloadService, DownloadResult } from './download.service';
-import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CurrentUser } from '../auth/current-user.decorator';
+import { JwtAuthGuard, CurrentUser } from '../auth';
 import { User } from '@prisma/client';
 import { RoutingService } from '../common/routing/routing.service';
 import { trace } from '@opentelemetry/api';

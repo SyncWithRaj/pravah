@@ -10,6 +10,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { MinioModule } from '../common/minio/minio.module';
 import { HealthCheckModule } from '../common/health-check/health-check.module';
 import { EdgeCacheModule } from '../common/edge-cache/edge-cache.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { EdgeCacheModule } from '../common/edge-cache/edge-cache.module';
     MinioModule,
     HealthCheckModule,
     EdgeCacheModule,
+    AuthModule,
 
     BullModule.forRootAsync({
       imports: [ConfigModule],
