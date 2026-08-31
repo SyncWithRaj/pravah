@@ -1,262 +1,781 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pravah CDN — Control & Test Playground</title>
+  <title>Pravah CDN — Control & Operations Center</title>
+  
+  <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
-  <link rel="stylesheet" href="styles.css">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            dark: {
+              950: '#07080c',
+              900: '#0c0e14',
+              850: '#11141d',
+              800: '#171b26',
+              750: '#1e2332',
+              700: '#262c3e',
+            },
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- External Libraries -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="socket.io.min.js"></script>
+
+  <style>
+    /* Custom clean scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #0c0e14; }
+    ::-webkit-scrollbar-thumb { background: #262c3e; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #374151; }
+    
+    .glass-panel {
+      background: rgba(17, 20, 29, 0.75);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    
+    .glass-card {
+      background: rgba(23, 27, 38, 0.6);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+  </style>
 </head>
-<body>
-  <div class="app-layout">
-    <!-- Top Header -->
-    <header class="app-header">
-      <div class="header-brand">
-        <div class="brand-logo">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-          </svg>
+<body class="bg-dark-950 text-slate-200 font-sans min-h-screen flex flex-col antialiased selection:bg-brand-500/30 selection:text-brand-100">
+
+  <!-- ========================================================================= -->
+  <!-- TOP NAVIGATION HEADER -->
+  <!-- ========================================================================= -->
+  <header class="sticky top-0 z-40 border-b border-white/[0.06] bg-dark-900/80 backdrop-blur-md px-6 py-3.5">
+    <div class="max-w-7xl mx-auto flex items-center justify-between gap-4">
+      
+      <!-- Brand Logo -->
+      <div class="flex items-center gap-3.5">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-brand-600 to-indigo-400 flex items-center justify-center shadow-lg shadow-brand-500/10 border border-brand-400/20">
+          <i data-lucide="zap" class="w-5 h-5 text-white"></i>
         </div>
         <div>
-          <h1 class="brand-title">Pravah CDN</h1>
-          <p class="brand-subtitle">Distributed Edge Delivery & Caching Playground</p>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base font-semibold text-white tracking-tight">Pravah CDN</h1>
+            <span class="px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase rounded-full bg-brand-500/10 text-brand-400 border border-brand-500/20">Control Plane</span>
+          </div>
+          <p class="text-xs text-slate-400">Distributed Edge Delivery & Telemetry</p>
         </div>
       </div>
 
       <!-- Live Service Status Indicators -->
-      <div class="header-status">
-        <div class="status-pill" id="core-status-pill">
-          <span class="status-dot"></span>
-          <span class="status-label">Core Control Plane</span>
-          <span class="status-port">:3000</span>
+      <div class="flex items-center gap-2.5">
+        <!-- Core Node Status -->
+        <div id="core-status-pill" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-800/70 border border-white/5 text-xs text-slate-300">
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span class="font-medium text-slate-300">Core</span>
+          <span class="font-mono text-slate-500">:3000</span>
         </div>
-        <div class="status-pill" id="edge-status-pill">
-          <span class="status-dot"></span>
-          <span class="status-label">Edge Node</span>
-          <span class="status-port">:3001</span>
-        </div>
-        <div class="user-pill" id="user-pill">
-          <span class="user-avatar">👤</span>
-          <span id="user-display">Not Logged In</span>
-        </div>
-      </div>
-    </header>
 
-    <!-- Global Config & Auth Bar -->
-    <section class="config-bar">
-      <div class="config-group">
-        <label for="core-url-input">Core API URL</label>
-        <input type="text" id="core-url-input" value="http://localhost:3000/api/v1">
-      </div>
-      <div class="config-group">
-        <label for="edge-url-input">Edge Node URL</label>
-        <input type="text" id="edge-url-input" value="http://localhost:3001">
-      </div>
-      <div class="config-actions">
-        <button id="btn-open-login" class="btn btn-primary">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
-          Sign In / Register
-        </button>
-        <button id="btn-refresh-status" class="btn btn-secondary" title="Ping All Nodes">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-        </button>
-      </div>
-    </section>
-
-    <!-- Login / Register Modal -->
-    <div class="modal-overlay" id="auth-modal" style="display: none;">
-      <div class="modal-card">
-        <div class="modal-header">
-          <h3 id="modal-title">Sign In to Pravah Core</h3>
-          <button class="btn-close" id="btn-close-modal">✕</button>
+        <!-- Edge Node Status -->
+        <div id="edge-status-pill" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-800/70 border border-white/5 text-xs text-slate-300">
+          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span class="font-medium text-slate-300">Edge</span>
+          <span class="font-mono text-slate-500">:3001</span>
         </div>
-        <form id="auth-form" class="modal-form">
-          <div class="control-field">
-            <label for="auth-identifier">Email / Username</label>
-            <input type="text" id="auth-identifier" value="raj@pravah.com" required class="text-input">
+
+        <!-- WebSocket Real-time Indicator -->
+        <div id="ws-status-pill" class="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-800/70 border border-white/5 text-xs text-slate-300">
+          <span id="ws-status-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span id="ws-status-text" class="text-slate-400">Live WS</span>
+        </div>
+
+        <div class="h-4 w-px bg-white/10 mx-1"></div>
+
+        <!-- 4-Role Auto-Login Switcher Dropdown -->
+        <div class="relative flex items-center gap-2 px-3 py-1.5 rounded-lg bg-dark-800 border border-white/10 hover:border-white/20 transition">
+          <div id="user-avatar-badge" class="w-5 h-5 rounded-full bg-brand-500/20 text-brand-300 flex items-center justify-center text-[10px] font-bold">
+            <span id="user-avatar-initial">A</span>
           </div>
-          <div class="control-field">
-            <label for="auth-password">Password</label>
-            <input type="password" id="auth-password" value="supersecretpassword" required class="text-input">
+          <label for="role-selector" class="sr-only">Switch Role</label>
+          <select id="role-selector" class="bg-transparent text-xs font-semibold text-slate-200 focus:outline-none cursor-pointer pr-1">
+            <option value="ADMIN" class="bg-dark-900 text-slate-200">👑 Admin (Full Access)</option>
+            <option value="STREAMER" class="bg-dark-900 text-slate-200">🎬 Streamer (Upload & Transcode)</option>
+            <option value="VIEWER" class="bg-dark-900 text-slate-200">👁️ Viewer (Read Only)</option>
+            <option value="ANONYMOUS" class="bg-dark-900 text-slate-200">🚫 Anonymous (No Auth / Public)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- MAIN WORKSPACE LAYOUT -->
+  <!-- ========================================================================= -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-6 flex flex-col gap-6">
+
+    <!-- Workspace Tabs Navigation -->
+    <nav class="flex items-center gap-1 border-b border-white/[0.06] pb-3 text-sm">
+      <button class="nav-tab active flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-slate-200 bg-dark-800 border border-white/10 transition" data-tab="tab-upload">
+        <i data-lucide="video" class="w-4 h-4 text-brand-400"></i>
+        <span>Video & Ingestion Lab</span>
+      </button>
+      <button class="nav-tab flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-slate-400 hover:text-slate-200 hover:bg-dark-850 border border-transparent transition" data-tab="tab-topology">
+        <i data-lucide="network" class="w-4 h-4 text-slate-400"></i>
+        <span>Cluster Topology & Routing</span>
+      </button>
+      <button class="nav-tab flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-slate-400 hover:text-slate-200 hover:bg-dark-850 border border-transparent transition" data-tab="tab-dlq">
+        <i data-lucide="alert-octagon" class="w-4 h-4 text-slate-400"></i>
+        <span>DLQ Disaster Recovery</span>
+        <span id="dlq-count-badge" class="ml-1 px-1.5 py-0.2 text-[10px] rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30">0</span>
+      </button>
+      <button class="nav-tab flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-slate-400 hover:text-slate-200 hover:bg-dark-850 border border-transparent transition" data-tab="tab-telemetry">
+        <i data-lucide="activity" class="w-4 h-4 text-slate-400"></i>
+        <span>Live Telemetry</span>
+      </button>
+      <button class="nav-tab flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-slate-400 hover:text-slate-200 hover:bg-dark-850 border border-transparent transition" data-tab="tab-api-keys">
+        <i data-lucide="key" class="w-4 h-4 text-slate-400"></i>
+        <span>API Keys & RBAC</span>
+      </button>
+    </nav>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 1: VIDEO INGESTION & ADAPTIVE STREAMING LAB -->
+    <!-- ======================================================================= -->
+    <div id="tab-upload" class="tab-content flex flex-col gap-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        <!-- Left: Upload & Ingestion Column -->
+        <div class="lg:col-span-5 flex flex-col gap-6">
+          
+          <!-- Ingestion Card -->
+          <div class="glass-panel rounded-2xl p-5 flex flex-col gap-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-400">
+                  <i data-lucide="upload-cloud" class="w-4 h-4"></i>
+                </div>
+                <div>
+                  <h2 class="text-sm font-semibold text-white">Chunked Ingestion Pipeline</h2>
+                  <p class="text-xs text-slate-400">1MB chunks with SHA-256 validation</p>
+                </div>
+              </div>
+              <span class="text-[11px] font-mono text-slate-500">S3 / MinIO</span>
+            </div>
+
+            <!-- Drag & Drop Zone -->
+            <div id="drop-zone" class="border border-dashed border-white/10 hover:border-brand-500/50 rounded-xl p-6 flex flex-col items-center justify-center gap-3 bg-dark-900/50 hover:bg-dark-850/50 transition cursor-pointer group">
+              <input type="file" id="file-input" class="hidden" accept="video/*,image/*,.pdf,.bin">
+              <div class="w-12 h-12 rounded-full bg-dark-800 border border-white/10 flex items-center justify-center text-slate-400 group-hover:text-brand-400 group-hover:scale-105 transition">
+                <i data-lucide="film" class="w-6 h-6"></i>
+              </div>
+              <div class="text-center">
+                <p class="text-xs font-medium text-slate-200 group-hover:text-brand-300 transition">Drop any video (MP4, MKV) or file here</p>
+                <p class="text-[11px] text-slate-500 mt-0.5">Automated BullMQ multi-rendition transcoding</p>
+              </div>
+            </div>
+
+            <!-- Upload Progress Info (Hidden until upload) -->
+            <div id="upload-progress-card" class="hidden glass-card rounded-xl p-4 flex flex-col gap-3">
+              <div class="flex items-center justify-between text-xs">
+                <span id="upload-file-name" class="font-medium text-slate-200 truncate max-w-[200px]">sample_video.mp4</span>
+                <span id="upload-progress-percent" class="font-mono text-brand-400 font-semibold">0%</span>
+              </div>
+              <div class="w-full h-1.5 bg-dark-950 rounded-full overflow-hidden">
+                <div id="upload-progress-bar" class="h-full bg-gradient-to-r from-brand-600 to-indigo-400 w-0 transition-all duration-200"></div>
+              </div>
+              <div class="flex items-center justify-between text-[11px] font-mono text-slate-400">
+                <span id="upload-chunk-count">Chunk 0 / 0</span>
+                <span id="upload-speed">0 MB/s</span>
+              </div>
+            </div>
+
+            <!-- Action Button -->
+            <button id="btn-start-upload" disabled class="w-full py-2.5 px-4 rounded-xl bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium text-xs tracking-wide transition flex items-center justify-center gap-2 shadow-lg shadow-brand-600/20">
+              <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
+              <span>Start Ingestion & Transcode</span>
+            </button>
           </div>
-          <div class="modal-actions">
-            <button type="submit" id="btn-submit-auth" class="btn btn-primary full-width">Sign In</button>
+
+          <!-- Uploaded Files & Transcoding Jobs List -->
+          <div class="glass-panel rounded-2xl p-5 flex flex-col gap-3 flex-1 min-h-[300px]">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400">Recent Files & Streams</h3>
+              <button id="btn-refresh-files" class="text-slate-400 hover:text-slate-200 text-xs flex items-center gap-1 transition">
+                <i data-lucide="rotate-cw" class="w-3 h-3"></i>
+                <span>Refresh</span>
+              </button>
+            </div>
+            
+            <div id="file-list-container" class="flex flex-col gap-2 overflow-y-auto max-h-[360px] pr-1">
+              <!-- Dynamic File Items will load here -->
+              <div class="py-12 flex flex-col items-center justify-center text-center gap-2 text-slate-500">
+                <i data-lucide="inbox" class="w-8 h-8 stroke-1"></i>
+                <p class="text-xs">No files uploaded yet in this session</p>
+              </div>
+            </div>
           </div>
-          <p class="modal-toggle-text">
-            Don't have an account? <a href="#" id="toggle-auth-mode">Auto-Register & Sign In</a>
-          </p>
-        </form>
+
+        </div>
+
+        <!-- Right: Real-time Video Transcoder & Adaptive HLS Player -->
+        <div class="lg:col-span-7 flex flex-col gap-6">
+          
+          <!-- HLS Video Player Card -->
+          <div class="glass-panel rounded-2xl p-5 flex flex-col gap-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2.5">
+                <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                  <i data-lucide="play-circle" class="w-4 h-4"></i>
+                </div>
+                <div>
+                  <h2 class="text-sm font-semibold text-white">Adaptive HLS Stream Preview</h2>
+                  <p class="text-xs text-slate-400">Sub-10ms edge cached video segments</p>
+                </div>
+              </div>
+
+              <!-- Quality Selector Dropdown -->
+              <div class="flex items-center gap-2">
+                <span class="text-[11px] text-slate-400">Quality:</span>
+                <select id="hls-quality-select" class="bg-dark-800 border border-white/10 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+                  <option value="-1">Auto (Adaptive)</option>
+                  <option value="1080">1080p Full HD</option>
+                  <option value="720">720p HD</option>
+                  <option value="480">480p SD</option>
+                  <option value="360">360p</option>
+                  <option value="240">240p</option>
+                  <option value="144">144p Mobile</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Video Player Element -->
+            <div class="relative w-full aspect-video rounded-xl bg-black/80 border border-white/10 overflow-hidden flex items-center justify-center">
+              <video id="hls-video-player" class="w-full h-full object-contain" controls></video>
+              <div id="video-placeholder" class="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-dark-900/90 text-slate-400 p-6 text-center">
+                <div class="w-14 h-14 rounded-full bg-dark-800 border border-white/10 flex items-center justify-center text-slate-500">
+                  <i data-lucide="tv" class="w-7 h-7"></i>
+                </div>
+                <div>
+                  <p class="text-xs font-medium text-slate-300">Select a video from the list to preview HLS stream</p>
+                  <p class="text-[11px] text-slate-500 mt-1 font-mono">GET /edge/content/:fileId/hls/master.m3u8</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stream Diagnostics Bar -->
+            <div class="grid grid-cols-4 gap-3">
+              <div class="glass-card rounded-xl p-3 flex flex-col">
+                <span class="text-[10px] text-slate-400 uppercase tracking-wider">Current Bitrate</span>
+                <span id="player-bitrate" class="font-mono text-sm font-semibold text-slate-200 mt-0.5">-- kbps</span>
+              </div>
+              <div class="glass-card rounded-xl p-3 flex flex-col">
+                <span class="text-[10px] text-slate-400 uppercase tracking-wider">Active Rendition</span>
+                <span id="player-resolution" class="font-mono text-sm font-semibold text-slate-200 mt-0.5">Auto</span>
+              </div>
+              <div class="glass-card rounded-xl p-3 flex flex-col">
+                <span class="text-[10px] text-slate-400 uppercase tracking-wider">Buffer Length</span>
+                <span id="player-buffer" class="font-mono text-sm font-semibold text-emerald-400 mt-0.5">0.0 s</span>
+              </div>
+              <div class="glass-card rounded-xl p-3 flex flex-col">
+                <span class="text-[10px] text-slate-400 uppercase tracking-wider">Edge Cache State</span>
+                <span id="player-cache-hit" class="font-mono text-sm font-semibold text-brand-400 mt-0.5">HIT (Sub-5ms)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Transcoding Pipeline Stepper -->
+          <div class="glass-panel rounded-2xl p-5 flex flex-col gap-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <i data-lucide="cpu" class="w-4 h-4 text-brand-400"></i>
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-300">BullMQ FFmpeg Pipeline Status</h3>
+              </div>
+              <span id="transcode-status-pill" class="px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-slate-800 text-slate-400 border border-white/5">IDLE</span>
+            </div>
+
+            <!-- Multi-Rendition Stepper Grid -->
+            <div class="grid grid-cols-6 gap-2">
+              <div id="step-1080p" class="glass-card rounded-lg p-2.5 flex flex-col items-center gap-1.5 text-center opacity-40 transition">
+                <span class="text-[10px] font-mono font-bold text-slate-300">1080p</span>
+                <span class="text-[9px] text-slate-400 font-mono">4.5 Mbps</span>
+                <span class="status-indicator w-2 h-2 rounded-full bg-slate-600"></span>
+              </div>
+              <div id="step-720p" class="glass-card rounded-lg p-2.5 flex flex-col items-center gap-1.5 text-center opacity-40 transition">
+                <span class="text-[10px] font-mono font-bold text-slate-300">720p</span>
+                <span class="text-[9px] text-slate-400 font-mono">2.5 Mbps</span>
+                <span class="status-indicator w-2 h-2 rounded-full bg-slate-600"></span>
+              </div>
+              <div id="step-480p" class="glass-card rounded-lg p-2.5 flex flex-col items-center gap-1.5 text-center opacity-40 transition">
+                <span class="text-[10px] font-mono font-bold text-slate-300">480p</span>
+                <span class="text-[9px] text-slate-400 font-mono">1.2 Mbps</span>
+                <span class="status-indicator w-2 h-2 rounded-full bg-slate-600"></span>
+              </div>
+              <div id="step-360p" class="glass-card rounded-lg p-2.5 flex flex-col items-center gap-1.5 text-center opacity-40 transition">
+                <span class="text-[10px] font-mono font-bold text-slate-300">360p</span>
+                <span class="text-[9px] text-slate-400 font-mono">800 Kbps</span>
+                <span class="status-indicator w-2 h-2 rounded-full bg-slate-600"></span>
+              </div>
+              <div id="step-240p" class="glass-card rounded-lg p-2.5 flex flex-col items-center gap-1.5 text-center opacity-40 transition">
+                <span class="text-[10px] font-mono font-bold text-slate-300">240p</span>
+                <span class="text-[9px] text-slate-400 font-mono">450 Kbps</span>
+                <span class="status-indicator w-2 h-2 rounded-full bg-slate-600"></span>
+              </div>
+              <div id="step-144p" class="glass-card rounded-lg p-2.5 flex flex-col items-center gap-1.5 text-center opacity-40 transition">
+                <span class="text-[10px] font-mono font-bold text-slate-300">144p</span>
+                <span class="text-[9px] text-slate-400 font-mono">200 Kbps</span>
+                <span class="status-indicator w-2 h-2 rounded-full bg-slate-600"></span>
+              </div>
+            </div>
+          </div>
+
+        </div>
       </div>
     </div>
 
-    <!-- Main Grid Dashboard -->
-    <main class="dashboard-grid">
-      <!-- Left Column: Upload Studio & File Library -->
-      <div class="col-left">
-        <!-- Chunked Upload Card -->
-        <section class="card upload-card">
-          <div class="card-header">
-            <h2>📤 Resumable Upload Studio</h2>
-            <span class="badge badge-accent">Chunked & Compressed</span>
-          </div>
-
-          <div class="drop-zone" id="drop-zone">
-            <input type="file" id="file-input" class="file-input-hidden">
-            <div class="drop-zone-content">
-              <div class="drop-icon">
-                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="17 8 12 3 7 8"/>
-                  <line x1="12" y1="3" x2="12" y2="15"/>
-                </svg>
+    <!-- ======================================================================= -->
+    <!-- TAB 2: CLUSTER TOPOLOGY & GEODNS ROUTING SANDBOX -->
+    <!-- ======================================================================= -->
+    <div id="tab-topology" class="tab-content hidden flex flex-col gap-6">
+      
+      <!-- Cluster Nodes Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        
+        <!-- Edge Node 1: Mumbai -->
+        <div id="card-node-mumbai" class="glass-panel rounded-2xl p-5 flex flex-col gap-4 relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="text-xl">🇮🇳</span>
+              <div>
+                <h3 class="text-sm font-semibold text-white">edge-node-01</h3>
+                <p class="text-xs text-slate-400">ap-south-1 (Mumbai, India)</p>
               </div>
-              <p class="drop-title">Drag & drop files here or <span class="highlight">browse</span></p>
-              <p class="drop-hint">Images, videos, text, binary files (up to 500MB)</p>
+            </div>
+            <span class="node-status-badge px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">HEALTHY</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="glass-card rounded-lg p-2.5 flex flex-col">
+              <span class="text-[10px] text-slate-400">Ping Latency</span>
+              <span class="font-mono text-slate-200 font-semibold mt-0.5">1.2 ms</span>
+            </div>
+            <div class="glass-card rounded-lg p-2.5 flex flex-col">
+              <span class="text-[10px] text-slate-400">Heartbeat HMAC</span>
+              <span class="font-mono text-emerald-400 font-semibold mt-0.5">Verified</span>
             </div>
           </div>
 
-          <!-- File Upload Progress Section -->
-          <div class="upload-progress-container" id="upload-progress-container" style="display: none;">
-            <div class="file-meta-row">
-              <span class="file-name" id="upload-file-name">filename.ext</span>
-              <span class="file-size" id="upload-file-size">0 KB</span>
+          <button onclick="simulateCrash('edge-node-01')" class="btn-crash-toggle w-full py-2 rounded-lg bg-dark-800 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/30 border border-white/10 text-xs font-medium text-slate-300 transition flex items-center justify-center gap-1.5">
+            <i data-lucide="power" class="w-3.5 h-3.5"></i>
+            <span>Simulate Node Crash</span>
+          </button>
+        </div>
+
+        <!-- Edge Node 2: Frankfurt -->
+        <div id="card-node-frankfurt" class="glass-panel rounded-2xl p-5 flex flex-col gap-4 relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="text-xl">🇩🇪</span>
+              <div>
+                <h3 class="text-sm font-semibold text-white">edge-node-02</h3>
+                <p class="text-xs text-slate-400">eu-central-1 (Frankfurt, Germany)</p>
+              </div>
             </div>
-            <div class="progress-bar-bg">
-              <div class="progress-bar-fill" id="upload-progress-fill" style="width: 0%;"></div>
+            <span class="node-status-badge px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">HEALTHY</span>
+          </div>
+
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="glass-card rounded-lg p-2.5 flex flex-col">
+              <span class="text-[10px] text-slate-400">Ping Latency</span>
+              <span class="font-mono text-slate-200 font-semibold mt-0.5">2.4 ms</span>
             </div>
-            <div class="progress-stats-row">
-              <span id="upload-chunk-status">Computing SHA-256...</span>
-              <span id="upload-percentage">0%</span>
+            <div class="glass-card rounded-lg p-2.5 flex flex-col">
+              <span class="text-[10px] text-slate-400">Heartbeat HMAC</span>
+              <span class="font-mono text-emerald-400 font-semibold mt-0.5">Verified</span>
             </div>
           </div>
 
-          <div class="upload-actions">
-            <button id="btn-start-upload" class="btn btn-accent full-width" disabled>
-              Start Chunked Upload to Origin
-            </button>
-          </div>
-        </section>
+          <button onclick="simulateCrash('edge-node-02')" class="btn-crash-toggle w-full py-2 rounded-lg bg-dark-800 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/30 border border-white/10 text-xs font-medium text-slate-300 transition flex items-center justify-center gap-1.5">
+            <i data-lucide="power" class="w-3.5 h-3.5"></i>
+            <span>Simulate Node Crash</span>
+          </button>
+        </div>
 
-        <!-- File Explorer & Version Manager -->
-        <section class="card files-card">
-          <div class="card-header">
-            <h2>📁 Stored CDN Files</h2>
-            <button id="btn-refresh-files" class="btn btn-xs btn-secondary">Refresh</button>
+        <!-- Edge Node 3: Virginia -->
+        <div id="card-node-virginia" class="glass-panel rounded-2xl p-5 flex flex-col gap-4 relative overflow-hidden">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="text-xl">🇺🇸</span>
+              <div>
+                <h3 class="text-sm font-semibold text-white">edge-node-03</h3>
+                <p class="text-xs text-slate-400">us-east-1 (Virginia, USA)</p>
+              </div>
+            </div>
+            <span class="node-status-badge px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">HEALTHY</span>
           </div>
-          <div class="file-list-scroll">
-            <div class="file-list" id="file-list">
-              <div class="empty-state">No files uploaded yet. Upload a file above to test!</div>
+
+          <div class="grid grid-cols-2 gap-2 text-xs">
+            <div class="glass-card rounded-lg p-2.5 flex flex-col">
+              <span class="text-[10px] text-slate-400">Ping Latency</span>
+              <span class="font-mono text-slate-200 font-semibold mt-0.5">1.8 ms</span>
+            </div>
+            <div class="glass-card rounded-lg p-2.5 flex flex-col">
+              <span class="text-[10px] text-slate-400">Heartbeat HMAC</span>
+              <span class="font-mono text-emerald-400 font-semibold mt-0.5">Verified</span>
             </div>
           </div>
-        </section>
+
+          <button onclick="simulateCrash('edge-node-03')" class="btn-crash-toggle w-full py-2 rounded-lg bg-dark-800 hover:bg-rose-500/20 hover:text-rose-300 hover:border-rose-500/30 border border-white/10 text-xs font-medium text-slate-300 transition flex items-center justify-center gap-1.5">
+            <i data-lucide="power" class="w-3.5 h-3.5"></i>
+            <span>Simulate Node Crash</span>
+          </button>
+        </div>
+
       </div>
 
-      <!-- Right Column: Geo-Routing & Delivery Inspector -->
-      <div class="col-right">
-        <section class="card inspector-card">
-          <div class="card-header">
-            <h2>🌍 Geo-Routing & Edge Delivery Inspector</h2>
-            <span class="badge badge-info">Real-Time</span>
+      <!-- Interactive Geo-Routing & Failover Simulator -->
+      <div class="glass-panel rounded-2xl p-5 flex flex-col gap-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-brand-500/10 border border-brand-500/20 flex items-center justify-center text-brand-400">
+              <i data-lucide="navigation" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h2 class="text-sm font-semibold text-white">GeoDNS & Failover Routing Simulator</h2>
+              <p class="text-xs text-slate-400">Simulate client download requests from worldwide locations</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Client Location</label>
+            <select id="sim-client-location" class="w-full bg-dark-800 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+              <option value="London">🇬🇧 London, UK (51.5074° N, 0.1278° W)</option>
+              <option value="Mumbai">🇮🇳 Mumbai, India (19.0760° N, 72.8777° E)</option>
+              <option value="New York">🇺🇸 New York, USA (40.7128° N, 74.0060° W)</option>
+              <option value="Tokyo">🇯🇵 Tokyo, Japan (35.6762° N, 139.6503° E)</option>
+              <option value="Sydney">🇦🇺 Sydney, Australia (33.8688° S, 151.2093° E)</option>
+            </select>
           </div>
 
-          <!-- Simulation Controls -->
-          <div class="routing-control-panel">
-            <div class="control-field">
-              <label for="client-region-select">Simulate Client Location</label>
-              <select id="client-region-select" class="select-input">
-                <option value="ap-south-1" selected>🇮🇳 Mumbai (ap-south-1) — 19.07° N, 72.87° E</option>
-                <option value="eu-central-1">🇩🇪 Frankfurt (eu-central-1) — 50.11° N, 8.68° E</option>
-                <option value="us-east-1">🇺🇸 Virginia (us-east-1) — 37.43° N, -78.65° W</option>
-                <option value="ap-northeast-1">🇯🇵 Tokyo (ap-northeast-1) — 35.67° N, 139.65° E</option>
-                <option value="eu-west-1">🇮🇪 London / Dublin (eu-west-1) — 53.34° N, -6.26° W</option>
-                <option value="us-west-2">🇺🇸 Oregon (us-west-2) — 45.52° N, -122.67° W</option>
-              </select>
-            </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-400 mb-1.5">Target File ID</label>
+            <input type="text" id="sim-file-id" placeholder="Select or enter file ID" class="w-full bg-dark-800 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500 font-mono">
+          </div>
 
-            <div class="control-field">
-              <label for="selected-file-id">Selected File for CDN Delivery</label>
-              <input type="text" id="selected-file-id" placeholder="Select a file from left or paste File ID" class="text-input">
-            </div>
-
-            <button id="btn-cdn-download" class="btn btn-primary full-width" disabled>
-              ⚡ Request via Pravah Geo-Routing
+          <div class="flex items-end">
+            <button id="btn-run-geodns-test" class="w-full py-2.5 px-4 rounded-xl bg-brand-600 hover:bg-brand-500 text-white font-medium text-xs tracking-wide transition flex items-center justify-center gap-2 shadow-lg shadow-brand-600/20">
+              <i data-lucide="arrow-right-circle" class="w-4 h-4"></i>
+              <span>Test 302 GeoDNS Route</span>
             </button>
           </div>
+        </div>
 
-          <!-- Live Metrics & Inspection Telemetry -->
-          <div class="telemetry-box" id="telemetry-box">
-            <div class="telemetry-grid">
-              <div class="metric-card">
-                <span class="metric-label">Cache State</span>
-                <span class="metric-value" id="metric-cache-state">—</span>
-              </div>
-              <div class="metric-card">
-                <span class="metric-label">Total Latency</span>
-                <span class="metric-value" id="metric-latency">—</span>
-              </div>
-              <div class="metric-card">
-                <span class="metric-label">Routing Edge</span>
-                <span class="metric-value" id="metric-edge-name">—</span>
-              </div>
-              <div class="metric-card">
-                <span class="metric-label">Haversine Distance</span>
-                <span class="metric-value" id="metric-distance">—</span>
-              </div>
+        <!-- GeoDNS Routing Results Box -->
+        <div id="geodns-result-card" class="hidden glass-card rounded-xl p-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between text-xs">
+            <span class="text-slate-400 font-medium">Routing Path & Decision:</span>
+            <span id="routing-status-badge" class="px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Optimal Edge Selected</span>
+          </div>
+          <div class="grid grid-cols-4 gap-2 font-mono text-xs">
+            <div class="bg-dark-900 p-2.5 rounded-lg border border-white/5">
+              <span class="text-[10px] text-slate-500 block">Selected Edge</span>
+              <span id="geo-selected-node" class="text-slate-200 font-bold">edge-node-02</span>
             </div>
-
-            <!-- Routing Step-by-Step Flow Log -->
-            <div class="trace-log-box">
-              <div class="trace-header">Hop-by-Hop Execution Log</div>
-              <pre class="trace-log" id="trace-log">Awaiting CDN request...</pre>
+            <div class="bg-dark-900 p-2.5 rounded-lg border border-white/5">
+              <span class="text-[10px] text-slate-500 block">Haversine Distance</span>
+              <span id="geo-distance" class="text-brand-400 font-bold">637 km</span>
             </div>
-
-            <!-- Inline Content Preview -->
-            <div class="preview-box" id="preview-box" style="display: none;">
-              <div class="preview-header">Delivered Content Payload</div>
-              <div class="preview-content" id="preview-content"></div>
+            <div class="bg-dark-900 p-2.5 rounded-lg border border-white/5">
+              <span class="text-[10px] text-slate-500 block">HTTP Redirect</span>
+              <span id="geo-redirect-code" class="text-indigo-400 font-bold">302 Found</span>
+            </div>
+            <div class="bg-dark-900 p-2.5 rounded-lg border border-white/5">
+              <span class="text-[10px] text-slate-500 block">Cache Verification</span>
+              <span id="geo-cache-status" class="text-emerald-400 font-bold">HIT (RAM Tier)</span>
             </div>
           </div>
-        </section>
-
-        <!-- Live Real-Time WebSocket Telemetry Feed -->
-        <section class="card ws-card">
-          <div class="card-header">
-            <h2>Live WebSocket Telemetry Stream</h2>
-            <div class="ws-status-badge" id="ws-status-badge">
-              <span class="pulse-dot"></span>
-              <span id="ws-status-text">Connecting...</span>
-            </div>
-          </div>
-
-          <div class="ws-metrics-bar">
-            <div class="ws-metric">
-              <span class="ws-metric-label">Live Throughput</span>
-              <span class="ws-metric-val" id="ws-throughput">0 B/s</span>
-            </div>
-            <div class="ws-metric">
-              <span class="ws-metric-label">RPS</span>
-              <span class="ws-metric-val" id="ws-rps">0.0 req/s</span>
-            </div>
-            <div class="ws-metric">
-              <span class="ws-metric-label">Global Hit Ratio</span>
-              <span class="ws-metric-val" id="ws-hit-ratio">100%</span>
-            </div>
-          </div>
-
-          <div class="ws-feed-box">
-            <div class="ws-feed-header">Incoming Distributed Events</div>
-            <div class="ws-feed-stream" id="ws-event-stream">
-              <div class="ws-event-item">Awaiting live Kafka & Edge events...</div>
-            </div>
-          </div>
-        </section>
+        </div>
       </div>
-    </main>
+
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 3: DLQ DISASTER RECOVERY CONSOLE -->
+    <!-- ======================================================================= -->
+    <div id="tab-dlq" class="tab-content hidden flex flex-col gap-6">
+      
+      <div class="glass-panel rounded-2xl p-5 flex flex-col gap-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+              <i data-lucide="alert-octagon" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h2 class="text-sm font-semibold text-white">Replication Dead Letter Queue (DLQ)</h2>
+              <p class="text-xs text-slate-400">Inspect failed replication jobs, review error traces, and replay messages</p>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <button id="btn-replay-all-dlq" class="px-3 py-1.5 rounded-lg bg-dark-800 hover:bg-dark-750 text-xs font-medium text-slate-300 border border-white/10 transition flex items-center gap-1.5">
+              <i data-lucide="rotate-ccw" class="w-3.5 h-3.5 text-brand-400"></i>
+              <span>Replay All Jobs</span>
+            </button>
+            <button id="btn-refresh-dlq" class="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-xs font-medium text-white transition flex items-center gap-1.5">
+              <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- DLQ Table -->
+        <div class="overflow-x-auto rounded-xl border border-white/5">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-dark-900/80 text-slate-400 uppercase tracking-wider font-mono text-[10px] border-b border-white/5">
+              <tr>
+                <th class="p-3.5">Job ID / File</th>
+                <th class="p-3.5">Target Edge</th>
+                <th class="p-3.5">Error Reason</th>
+                <th class="p-3.5">Retries</th>
+                <th class="p-3.5">Timestamp</th>
+                <th class="p-3.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="dlq-table-body" class="divide-y divide-white/5 font-mono text-slate-300">
+              <tr>
+                <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
+                  <i data-lucide="check-circle-2" class="w-8 h-8 text-emerald-400/50 mx-auto mb-2"></i>
+                  <p class="text-xs font-medium text-slate-300">Dead Letter Queue is Clean</p>
+                  <p class="text-[11px] text-slate-500">All edge replication jobs executed successfully.</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 4: LIVE TELEMETRY & METRICS -->
+    <!-- ======================================================================= -->
+    <div id="tab-telemetry" class="tab-content hidden flex flex-col gap-6">
+      
+      <!-- Top Gauges Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div class="glass-panel rounded-2xl p-4 flex flex-col">
+          <span class="text-xs text-slate-400">Global Cache Hit Ratio</span>
+          <div class="flex items-baseline gap-2 mt-1">
+            <span id="metric-hit-ratio" class="text-2xl font-bold font-mono text-emerald-400">99.4%</span>
+            <span class="text-[11px] text-slate-500 font-mono">Target > 99%</span>
+          </div>
+        </div>
+
+        <div class="glass-panel rounded-2xl p-4 flex flex-col">
+          <span class="text-xs text-slate-400">Throughput (RPS)</span>
+          <div class="flex items-baseline gap-2 mt-1">
+            <span id="metric-rps" class="text-2xl font-bold font-mono text-brand-400">1,240</span>
+            <span class="text-[11px] text-slate-500 font-mono">req / sec</span>
+          </div>
+        </div>
+
+        <div class="glass-panel rounded-2xl p-4 flex flex-col">
+          <span class="text-xs text-slate-400">Origin Offload Savings</span>
+          <div class="flex items-baseline gap-2 mt-1">
+            <span id="metric-offload" class="text-2xl font-bold font-mono text-indigo-300">98.8%</span>
+            <span class="text-[11px] text-slate-500 font-mono">Bandwidth Saved</span>
+          </div>
+        </div>
+
+        <div class="glass-panel rounded-2xl p-4 flex flex-col">
+          <span class="text-xs text-slate-400">P99 Edge Latency</span>
+          <div class="flex items-baseline gap-2 mt-1">
+            <span id="metric-p99" class="text-2xl font-bold font-mono text-slate-200">1.8 ms</span>
+            <span class="text-[11px] text-emerald-400 font-mono">Sub-5ms</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Telemetry Chart -->
+      <div class="glass-panel rounded-2xl p-5 flex flex-col gap-4">
+        <div class="flex items-center justify-between">
+          <h3 class="text-sm font-semibold text-white">Live Request Throughput & Cache Hits</h3>
+          <span class="text-xs font-mono text-slate-500">WebSocket: Real-time 1s window</span>
+        </div>
+        <div class="w-full h-64">
+          <canvas id="telemetry-chart"></canvas>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 5: DEVELOPER API KEYS & RBAC PORTAL -->
+    <!-- ======================================================================= -->
+    <div id="tab-api-keys" class="tab-content hidden flex flex-col gap-6">
+      
+      <div class="glass-panel rounded-2xl p-5 flex flex-col gap-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2.5">
+            <div class="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+              <i data-lucide="key" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h2 class="text-sm font-semibold text-white">Developer API Keys</h2>
+              <p class="text-xs text-slate-400">Machine-to-machine SHA-256 authenticated API access</p>
+            </div>
+          </div>
+
+          <button id="btn-open-create-key" class="px-3 py-1.5 rounded-lg bg-brand-600 hover:bg-brand-500 text-xs font-medium text-white transition flex items-center gap-1.5 shadow-lg shadow-brand-600/20">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i>
+            <span>Create New API Key</span>
+          </button>
+        </div>
+
+        <!-- Active API Keys Table -->
+        <div class="overflow-x-auto rounded-xl border border-white/5">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-dark-900/80 text-slate-400 uppercase tracking-wider font-mono text-[10px] border-b border-white/5">
+              <tr>
+                <th class="p-3.5">Key Name</th>
+                <th class="p-3.5">Key Prefix</th>
+                <th class="p-3.5">Assigned Role</th>
+                <th class="p-3.5">Created Date</th>
+                <th class="p-3.5">Status</th>
+                <th class="p-3.5 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="api-keys-table-body" class="divide-y divide-white/5 font-mono text-slate-300">
+              <!-- Dynamically rendered keys -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: CREATE API KEY -->
+  <!-- ========================================================================= -->
+  <div id="modal-create-key" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-md rounded-2xl p-6 flex flex-col gap-4 border border-white/10 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-white">Generate API Key</h3>
+        <button class="btn-close-modal text-slate-400 hover:text-white transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="flex flex-col gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Key Name</label>
+          <input type="text" id="new-key-name" placeholder="e.g. CI-CD-Streamer-Key" class="w-full bg-dark-800 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Role Permissions</label>
+          <select id="new-key-role" class="w-full bg-dark-800 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+            <option value="STREAMER">STREAMER (Upload & Transcoding Access)</option>
+            <option value="ADMIN">ADMIN (Full Cluster Control)</option>
+            <option value="VIEWER">VIEWER (Read-Only Stream Access)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Expiration</label>
+          <select id="new-key-expiry" class="w-full bg-dark-800 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+            <option value="30">30 Days</option>
+            <option value="90">90 Days</option>
+            <option value="365">1 Year</option>
+            <option value="0">Never Expires</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Plaintext Key Display (Upon creation) -->
+      <div id="created-key-card" class="hidden bg-dark-900 border border-brand-500/30 rounded-xl p-3 flex flex-col gap-2">
+        <span class="text-[11px] text-amber-400 font-medium flex items-center gap-1">
+          <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+          <span>Save this key securely. It won't be shown again!</span>
+        </span>
+        <div class="flex items-center gap-2">
+          <input type="text" id="created-key-plaintext" readonly class="w-full bg-black/50 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-mono text-emerald-400 select-all">
+          <button id="btn-copy-key" class="p-2 rounded-lg bg-dark-800 hover:bg-dark-700 text-slate-300 transition">
+            <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 mt-2">
+        <button class="btn-close-modal px-3 py-2 rounded-xl text-xs font-medium text-slate-400 hover:text-white transition">Cancel</button>
+        <button id="btn-submit-create-key" class="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-xs font-medium text-white transition">Generate Key</button>
+      </div>
+    </div>
   </div>
 
-  <script src="socket.io.min.js"></script>
-  <script src="app.js?v=7"></script>
+  <!-- ========================================================================= -->
+  <!-- MODAL: SIGN IN / REGISTER / SWITCH ROLE -->
+  <!-- ========================================================================= -->
+  <div id="modal-auth" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4 border border-white/10 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-white">Sign In / Role Switcher</h3>
+        <button class="btn-close-auth-modal text-slate-400 hover:text-white transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="flex flex-col gap-3">
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Email / Identifier</label>
+          <input type="text" id="auth-email" value="admin-rbac-test@pravah.io" class="w-full bg-dark-800 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+        </div>
+        <div>
+          <label class="block text-xs font-medium text-slate-400 mb-1">Password</label>
+          <input type="password" id="auth-password" value="Admin123!@#" class="w-full bg-dark-800 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-2 mt-2">
+        <button id="btn-submit-login" class="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-xs font-medium text-white transition">Sign In</button>
+        <button id="btn-submit-register" class="w-full py-2 rounded-xl bg-dark-800 hover:bg-dark-750 border border-white/10 text-xs font-medium text-slate-300 transition">Register New User</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dashboard Script Logic -->
+  <script src="app.js"></script>
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+  </script>
 </body>
 </html>
