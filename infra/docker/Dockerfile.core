@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.4
 FROM node:22-alpine
 
 # Install ffmpeg and pnpm
@@ -12,8 +13,9 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 # Copy the core app source code
 COPY apps/core ./apps/core
 
-# Install ALL dependencies (including devDependencies for build tools)
-RUN pnpm config set minimum-release-age 0 && pnpm install --frozen-lockfile --ignore-scripts
+# Install ALL dependencies with persistent BuildKit cache mount
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts
 
 # Generate Prisma client specifically for core
 RUN pnpm --filter core exec prisma generate
