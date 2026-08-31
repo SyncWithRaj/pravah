@@ -1,7 +1,11 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, UseGuards } from '@nestjs/common';
 import { TranscodingService } from './transcoding.service';
+import { UnifiedAuthGuard, RolesGuard, Roles } from '../auth';
+import { Role } from '@prisma/client';
 
 @Controller('admin/transcoding')
+@UseGuards(UnifiedAuthGuard, RolesGuard)
+@Roles(Role.ADMIN, Role.STREAMER)
 export class TranscodingController {
   constructor(private readonly transcodingService: TranscodingService) {}
 

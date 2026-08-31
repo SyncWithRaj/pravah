@@ -4,6 +4,7 @@ import { DlqController } from './dlq.controller';
 import { ReplicationService } from './replication.service';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { ReplicationJobStatus, EdgeNodeStatus } from '@prisma/client';
+import { UnifiedAuthGuard, RolesGuard } from '../auth';
 
 describe('DlqController', () => {
   let controller: DlqController;
@@ -26,7 +27,12 @@ describe('DlqController', () => {
           useValue: mockReplicationService,
         },
       ],
-    }).compile();
+    })
+      .overrideGuard(UnifiedAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     controller = module.get<DlqController>(DlqController);
     replicationService = module.get(ReplicationService);

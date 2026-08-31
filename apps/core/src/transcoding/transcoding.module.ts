@@ -7,6 +7,7 @@ import { TranscodingProcessor } from './transcoding.processor';
 import { KafkaModule } from '../common/kafka/kafka.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MinioModule } from '../common/minio/minio.module';
+import { AuthModule } from '../auth/auth.module';
 import { TRANSCODE_QUEUE_NAME } from './transcoding.constants';
 
 @Module({
@@ -15,6 +16,7 @@ import { TRANSCODE_QUEUE_NAME } from './transcoding.constants';
     KafkaModule,
     PrismaModule,
     MinioModule,
+    AuthModule,
 
     BullModule.forRootAsync({
       imports: [ConfigModule],
