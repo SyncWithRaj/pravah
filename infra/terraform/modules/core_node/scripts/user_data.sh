@@ -62,13 +62,24 @@ OTEL_SERVICE_NAME=pravah-core
 EOF
 fi
 
-# Build and start Core Control Plane, Storage, Observability & Nginx Dashboard UI
-docker compose -f infra/docker/docker-compose.core.yml up -d --build
+# 1. Start database, storage & core dependencies first
+docker compose -f infra/docker/docker-compose.core.yml up -d postgres minio redis redpanda jaeger loki promtail
 
-# Run database migrations and seeding
-docker compose -f infra/docker/docker-compose.core.yml run --rm core-app pnpm --filter core exec prisma db push --schema=prisma/schema.prisma || true
-docker compose -f infra/docker/docker-compose.core.yml run --rm core-app pnpm --filter core exec prisma db seed || true
-docker compose -f infra/docker/docker-compose.core.yml restart core-app
+# 2. Wait for PostgreSQL to be ready to accept connections
+for i in {1..30}; do
+  if docker compose -f infra/docker/docker-compose.core.yml exec -T postgres pg_isready -U admin_postgres -d pravah_db; then
+    echo "PostgreSQL is ready!"
+    break
+  fi
+  sleep 1
+done
+
+# 3. Create database tables and seed initial RBAC & Phase 5A edge nodes
+docker compose -f infra/docker/docker-compose.core.yml run --rm core-app pnpm --filter core exec prisma db push --schema=prisma/schema.prisma
+docker compose -f infra/docker/docker-compose.core.yml run --rm core-app pnpm --filter core exec prisma db seed
+
+# 4. Launch Core Control Plane, Observability & Dashboard UI on top of prepared DB
+docker compose -f infra/docker/docker-compose.core.yml up -d --build
 
 echo "=== Pravah Core Provisioning Complete at $(date) ==="
 
