@@ -3,9 +3,11 @@
 // Minimalist, Clean Dark Architecture (Tailwind + HLS.js + Chart.js + Socket.IO)
 // ============================================================================
 
+const HOSTNAME = window.location.hostname || 'localhost';
+
 const STATE = {
-  coreUrl: 'http://localhost:3000/api/v1',
-  edgeUrl: 'http://localhost:3001',
+  coreUrl: `http://${HOSTNAME}:3000/api/v1`,
+  edgeUrl: `http://${HOSTNAME}:3001`,
   token: localStorage.getItem('pravah_jwt_token') || null,
   user: null,
   activeUploadFile: null,
@@ -765,7 +767,7 @@ document.getElementById('btn-replay-all-dlq')?.addEventListener('click', async (
 // ============================================================================
 function initWebSocket() {
   try {
-    const socket = io('http://localhost:3000', { transports: ['websocket'] });
+    const socket = io(`http://${HOSTNAME}:3000`, { transports: ['websocket'] });
     socket.on('connect', () => {
       document.getElementById('ws-status-dot').className = 'w-2 h-2 rounded-full bg-emerald-400';
       document.getElementById('ws-status-text').textContent = 'Live WS';
