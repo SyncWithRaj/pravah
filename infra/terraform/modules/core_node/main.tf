@@ -103,6 +103,15 @@ resource "aws_security_group" "core_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  # Pravah Control Center UI
+  ingress {
+    description = "Pravah Control Center Dashboard UI"
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   # MinIO S3 API & Console
   ingress {
     description = "MinIO Object Storage S3 API"

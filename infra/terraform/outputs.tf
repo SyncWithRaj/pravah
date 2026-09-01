@@ -12,6 +12,11 @@ output "core_api_url" {
   value       = module.core_node.core_api_url
 }
 
+output "dashboard_url" {
+  description = "Pravah Control Center Dashboard UI URL"
+  value       = module.core_node.dashboard_url
+}
+
 output "grafana_dashboard_url" {
   description = "Grafana Observability Dashboard URL"
   value       = module.core_node.grafana_url
