@@ -90,11 +90,26 @@ async function switchRole(role) {
   if (!account) return;
 
   try {
-    const res = await fetch(`${STATE.coreUrl}/auth/login`, {
+    let res = await fetch(`${STATE.coreUrl}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier: account.identifier, password: account.password })
     });
+
+    // If user does not exist on fresh database, auto-register and retry login
+    if (!res.ok && res.status === 401) {
+      const username = account.identifier.split('@')[0];
+      await fetch(`${STATE.coreUrl}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email: account.identifier, password: account.password })
+      });
+      res = await fetch(`${STATE.coreUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: account.identifier, password: account.password })
+      });
+    }
 
     if (res.ok) {
       const data = await res.json();
