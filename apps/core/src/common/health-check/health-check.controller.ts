@@ -4,8 +4,6 @@ import { UnifiedAuthGuard, RolesGuard, Roles } from '../../auth';
 import { Role } from '@prisma/client';
 
 @Controller('admin/health')
-@UseGuards(UnifiedAuthGuard, RolesGuard)
-@Roles(Role.ADMIN)
 export class HealthCheckController {
   private readonly logger = new Logger(HealthCheckController.name);
 
@@ -18,6 +16,8 @@ export class HealthCheckController {
   }
 
   @Get('nodes')
+  @UseGuards(UnifiedAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.STREAMER, Role.USER)
   getAllNodes() {
     const nodes = this.healthCheckService.getAllNodes();
     return {
@@ -30,6 +30,8 @@ export class HealthCheckController {
   }
 
   @Get('nodes/healthy')
+  @UseGuards(UnifiedAuthGuard, RolesGuard)
+  @Roles(Role.ADMIN, Role.STREAMER, Role.USER)
   getHealthyNodes() {
     return this.healthCheckService.getHealthyNodes();
   }

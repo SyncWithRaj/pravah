@@ -16,6 +16,19 @@ const adapter = new PrismaPg({ connectionString: dbUrl });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  console.log('🧹 Performing Clean Slate Database Reset...');
+  try {
+    await prisma.dlqMessage.deleteMany({});
+    await prisma.replicationStatus.deleteMany({});
+    await prisma.videoTranscode.deleteMany({});
+    await prisma.fileChunk.deleteMany({});
+    await prisma.fileVersion.deleteMany({});
+    await prisma.file.deleteMany({});
+    console.log('✅ All old files, versions, chunks, transcodes, and DLQs cleared!');
+  } catch (e) {
+    console.warn('Note during clean wipe:', e);
+  }
+
   console.log('Seeding Phase 5A Edge Nodes...');
 
   await prisma.edgeNode.deleteMany();

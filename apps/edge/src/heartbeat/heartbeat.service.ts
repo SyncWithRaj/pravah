@@ -26,6 +26,7 @@ export class HeartbeatService {
   @Cron('*/10 * * * * *')
   async sendHeartbeat() {
     try {
+      const coreBase = this.coreApiUrl.replace(/\/+$/, '').replace(/\/api\/v1\/?$/, '');
       const path = '/api/v1/admin/health/heartbeat';
       const timestamp = Date.now();
       const payload = `${this.edgeNodeId}:POST:${path}:${timestamp}`;
@@ -35,7 +36,7 @@ export class HeartbeatService {
         .digest('hex');
 
       await this.httpService.axiosRef.post(
-        `${this.coreApiUrl}${path}`,
+        `${coreBase}${path}`,
         { edgeId: this.edgeNodeId },
         {
           headers: {
@@ -43,6 +44,7 @@ export class HeartbeatService {
             'x-service-timestamp': timestamp.toString(),
             'x-service-signature': signature,
           },
+          timeout: 3000,
         },
       );
       this.logger.debug(`Sent authenticated heartbeat for node: ${this.edgeNodeId}`);
