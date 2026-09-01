@@ -1,4 +1,4 @@
-name: CD - Multi-Region Cloud Deployment
+name: CD - Multi-Region AWS Cloud Deployment (On-Demand)
 
 on:
   workflow_dispatch:
@@ -59,10 +59,32 @@ jobs:
         if: ${{ github.event.inputs.action == 'plan' }}
         run: terraform plan
 
-      - name: Terraform Apply (Deploy Global CDN)
+      - name: Terraform Apply (Deploy Global CDN On-Demand)
         if: ${{ github.event.inputs.action == 'apply' }}
-        run: terraform apply -auto-approve
+        run: |
+          terraform apply -auto-approve
+          
+          # Extract outputs for GitHub Summary
+          CORE_IP=$(terraform output -raw core_public_ip 2>/dev/null || echo "Pending")
+          DASHBOARD_URL=$(terraform output -raw dashboard_url 2>/dev/null || echo "Pending")
+          GRAFANA_URL=$(terraform output -raw grafana_dashboard_url 2>/dev/null || echo "Pending")
+          EDGE_MUMBAI=$(terraform output -raw edge_mumbai_url 2>/dev/null || echo "Pending")
+          EDGE_VA=$(terraform output -raw edge_us_east_url 2>/dev/null || echo "Pending")
+          EDGE_FRA=$(terraform output -raw edge_eu_central_url 2>/dev/null || echo "Pending")
+          
+          echo "### 🚀 Pravah CDN — Cloud Deployment Live!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Service | Cloud Endpoint |" >> $GITHUB_STEP_SUMMARY
+          echo "|:---|:---|" >> $GITHUB_STEP_SUMMARY
+          echo "| 🎛️ **Control Center UI** | [$DASHBOARD_URL]($DASHBOARD_URL) |" >> $GITHUB_STEP_SUMMARY
+          echo "| ⚡ **Core API** | http://$CORE_IP:3000/api/v1 |" >> $GITHUB_STEP_SUMMARY
+          echo "| 📊 **Grafana** | [$GRAFANA_URL]($GRAFANA_URL) |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🇮🇳 **Edge Mumbai** | $EDGE_MUMBAI |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🇺🇸 **Edge Virginia** | $EDGE_VA |" >> $GITHUB_STEP_SUMMARY
+          echo "| 🇩🇪 **Edge Frankfurt** | $EDGE_FRA |" >> $GITHUB_STEP_SUMMARY
 
       - name: Terraform Destroy (Teardown & Stop Charges)
         if: ${{ github.event.inputs.action == 'destroy' }}
-        run: terraform destroy -auto-approve
+        run: |
+          terraform destroy -auto-approve
+          echo "### 🧹 Pravah CDN Cloud Resources Destroyed — Zero AWS Charges" >> $GITHUB_STEP_SUMMARY
