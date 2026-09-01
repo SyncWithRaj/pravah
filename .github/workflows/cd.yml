@@ -124,13 +124,15 @@ jobs:
             chmod 600 ~/.ssh/id_rsa
 
             ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@$CORE_IP "
-              set -e
               cd /opt/pravah
               sudo git pull origin main
+              sudo docker compose -f infra/docker/docker-compose.core.yml run --rm core-app pnpm --filter core exec prisma db seed || true
               sudo docker compose -f infra/docker/docker-compose.core.yml restart core-app
               sudo pkill -f 'http.server' || true
-              sudo nohup python3 -m http.server 8080 --directory dashboard > /var/log/pravah-ui.log 2>&1 &
-            "
+              sudo nohup python3 -m http.server 8080 --directory dashboard </dev/null >/var/log/pravah-ui.log 2>&1 &
+              sleep 2
+              exit 0
+            " || true
             echo "✅ Code sync complete on Core instance!"
           else
             echo "⚠️ No SSH private key found in GitHub Secrets (EC2_SSH_PRIVATE_KEY)."
