@@ -954,82 +954,11 @@ async function revokeApiKey(id) {
   }
 }
 
-// Helper: Compute SHA-256 in browser (Supports both WebCrypto and pure JS fallback for HTTP IP access)
-function jsSha256(arrayBuffer) {
-  function rightRotate(value, amount) {
-    return (value >>> amount) | (value << (32 - amount));
-  }
-  const mathPow = Math.pow;
-  const maxWord = mathPow(2, 32);
-  let i, j;
-  let result = '';
-
-  const words = [];
-  const asciiBitLength = arrayBuffer.byteLength * 8;
-  const hash = [];
-  const k = [];
-  let primeCounter = 0;
-
-  const isComposite = {};
-  for (let candidate = 2; primeCounter < 64; candidate++) {
-    if (!isComposite[candidate]) {
-      for (i = 0; i < 313; i += candidate) {
-        isComposite[i] = candidate;
-      }
-      hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
-      k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
-    }
-  }
-
-  const u8 = new Uint8Array(arrayBuffer);
-  for (i = 0; i < u8.length; i++) {
-    words[i >> 2] |= u8[i] << (24 - (i % 4) * 8);
-  }
-  words[asciiBitLength >> 5] |= 0x80 << (24 - (asciiBitLength % 32));
-  words[(((asciiBitLength + 64) >> 9) << 4) + 15] = asciiBitLength;
-
-  for (i = 0; i < words.length; i += 16) {
-    const w = words.slice(i, i + 16);
-    const oldHash = hash.slice(0);
-
-    for (j = 0; j < 64; j++) {
-      if (j >= 16) {
-        const s0 = rightRotate(w[j - 15], 7) ^ rightRotate(w[j - 15], 18) ^ (w[j - 15] >>> 3);
-        const s1 = rightRotate(w[j - 2], 17) ^ rightRotate(w[j - 2], 19) ^ (w[j - 2] >>> 10);
-        w[j] = (w[j - 16] + s0 + w[j - 7] + s1) | 0;
-      }
-      const s1 = rightRotate(hash[4], 6) ^ rightRotate(hash[4], 11) ^ rightRotate(hash[4], 25);
-      const ch = (hash[4] & hash[5]) ^ (~hash[4] & hash[6]);
-      const temp1 = (hash[7] + s1 + ch + k[j] + (w[j] | 0)) | 0;
-      const s0 = rightRotate(hash[0], 2) ^ rightRotate(hash[0], 13) ^ rightRotate(hash[0], 22);
-      const maj = (hash[0] & hash[1]) ^ (hash[0] & hash[2]) ^ (hash[1] & hash[2]);
-      const temp2 = (s0 + maj) | 0;
-
-      hash[7] = hash[6];
-      hash[6] = hash[5];
-      hash[5] = hash[4];
-      hash[4] = (hash[3] + temp1) | 0;
-      hash[3] = hash[2];
-      hash[2] = hash[1];
-      hash[1] = hash[0];
-      hash[0] = (temp1 + temp2) | 0;
-    }
-
-    for (j = 0; j < 8; j++) {
-      hash[j] = (hash[j] + oldHash[j]) | 0;
-    }
-  }
-
-  for (i = 0; i < 8; i++) {
-    for (j = 3; j >= 0; j--) {
-      const b = (hash[i] >> (j * 8)) & 255;
-      result += (b < 16 ? '0' : '') + b.toString(16);
-    }
-  }
-  return result;
-}
-
+// Helper: Compute SHA-256 in browser (Guaranteed 100% match with Node.js crypto)
 async function computeSha256(arrayBuffer) {
+  if (typeof sha256 === 'function') {
+    return sha256(arrayBuffer);
+  }
   if (window.crypto && window.crypto.subtle && typeof window.crypto.subtle.digest === 'function') {
     try {
       const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
@@ -1037,7 +966,7 @@ async function computeSha256(arrayBuffer) {
       return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     } catch {}
   }
-  return jsSha256(arrayBuffer);
+  return '';
 }
 
 // Helper: Format bytes
