@@ -530,7 +530,7 @@ function playHlsStream(fileId) {
   STATE.activeVideoId = fileId;
   const video = document.getElementById('hls-video-player');
   const placeholder = document.getElementById('video-placeholder');
-  const streamUrl = `${STATE.edgeUrl}/edge/content/${fileId}/hls/master.m3u8`;
+  const streamUrl = `${STATE.coreUrl}/edge/content/${fileId}/hls/master.m3u8`;
 
   placeholder.classList.add('hidden');
 
@@ -596,29 +596,45 @@ async function pollTranscodingStatus(fileId) {
   pill.textContent = 'PROCESSING';
   pill.className = 'px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse';
 
+  let pollCount = 0;
   const interval = setInterval(async () => {
+    pollCount++;
     try {
       const res = await fetch(`${STATE.coreUrl}/admin/transcoding/status/${fileId}`, {
         headers: STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {}
       });
       if (!res.ok) return;
       const data = await res.json();
+      const records = data.transcodes || (Array.isArray(data) ? data : []);
 
-      if (data.status === 'COMPLETED') {
-        clearInterval(interval);
-        pill.textContent = 'COMPLETED (Ready)';
-        pill.className = 'px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
-        
-        // Highlight all renditions green
-        ['1080p', '720p', '480p', '360p', '240p', '144p'].forEach(r => {
-          const step = document.getElementById(`step-${r}`);
+      if (records.length > 0) {
+        let allCompleted = true;
+        records.forEach(t => {
+          const step = document.getElementById(`step-${t.rendition}`);
           if (step) {
             step.classList.remove('opacity-40');
-            step.querySelector('.status-indicator').className = 'status-indicator w-2 h-2 rounded-full bg-emerald-400';
+            const ind = step.querySelector('.status-indicator');
+            if (t.status === 'COMPLETED') {
+              ind.className = 'status-indicator w-2 h-2 rounded-full bg-emerald-400';
+            } else if (t.status === 'PROCESSING') {
+              ind.className = 'status-indicator w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+              allCompleted = false;
+            } else {
+              allCompleted = false;
+            }
           }
         });
-        playHlsStream(fileId);
+
+        if (allCompleted) {
+          clearInterval(interval);
+          pill.textContent = 'COMPLETED (Ready)';
+          pill.className = 'px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+          playHlsStream(fileId);
+          showToast('HLS Transcoding completed! Ready to stream.', 'success');
+        }
       }
+
+      if (pollCount > 120) clearInterval(interval); // 5 min timeout safeguard
     } catch {
       clearInterval(interval);
     }
@@ -938,11 +954,90 @@ async function revokeApiKey(id) {
   }
 }
 
-// Helper: Compute SHA-256 in browser
+// Helper: Compute SHA-256 in browser (Supports both WebCrypto and pure JS fallback for HTTP IP access)
+function jsSha256(arrayBuffer) {
+  function rightRotate(value, amount) {
+    return (value >>> amount) | (value << (32 - amount));
+  }
+  const mathPow = Math.pow;
+  const maxWord = mathPow(2, 32);
+  let i, j;
+  let result = '';
+
+  const words = [];
+  const asciiBitLength = arrayBuffer.byteLength * 8;
+  const hash = [];
+  const k = [];
+  let primeCounter = 0;
+
+  const isComposite = {};
+  for (let candidate = 2; primeCounter < 64; candidate++) {
+    if (!isComposite[candidate]) {
+      for (i = 0; i < 313; i += candidate) {
+        isComposite[i] = candidate;
+      }
+      hash[primeCounter] = (mathPow(candidate, 0.5) * maxWord) | 0;
+      k[primeCounter++] = (mathPow(candidate, 1 / 3) * maxWord) | 0;
+    }
+  }
+
+  const u8 = new Uint8Array(arrayBuffer);
+  for (i = 0; i < u8.length; i++) {
+    words[i >> 2] |= u8[i] << (24 - (i % 4) * 8);
+  }
+  words[asciiBitLength >> 5] |= 0x80 << (24 - (asciiBitLength % 32));
+  words[(((asciiBitLength + 64) >> 9) << 4) + 15] = asciiBitLength;
+
+  for (i = 0; i < words.length; i += 16) {
+    const w = words.slice(i, i + 16);
+    const oldHash = hash.slice(0);
+
+    for (j = 0; j < 64; j++) {
+      if (j >= 16) {
+        const s0 = rightRotate(w[j - 15], 7) ^ rightRotate(w[j - 15], 18) ^ (w[j - 15] >>> 3);
+        const s1 = rightRotate(w[j - 2], 17) ^ rightRotate(w[j - 2], 19) ^ (w[j - 2] >>> 10);
+        w[j] = (w[j - 16] + s0 + w[j - 7] + s1) | 0;
+      }
+      const s1 = rightRotate(hash[4], 6) ^ rightRotate(hash[4], 11) ^ rightRotate(hash[4], 25);
+      const ch = (hash[4] & hash[5]) ^ (~hash[4] & hash[6]);
+      const temp1 = (hash[7] + s1 + ch + k[j] + (w[j] | 0)) | 0;
+      const s0 = rightRotate(hash[0], 2) ^ rightRotate(hash[0], 13) ^ rightRotate(hash[0], 22);
+      const maj = (hash[0] & hash[1]) ^ (hash[0] & hash[2]) ^ (hash[1] & hash[2]);
+      const temp2 = (s0 + maj) | 0;
+
+      hash[7] = hash[6];
+      hash[6] = hash[5];
+      hash[5] = hash[4];
+      hash[4] = (hash[3] + temp1) | 0;
+      hash[3] = hash[2];
+      hash[2] = hash[1];
+      hash[1] = hash[0];
+      hash[0] = (temp1 + temp2) | 0;
+    }
+
+    for (j = 0; j < 8; j++) {
+      hash[j] = (hash[j] + oldHash[j]) | 0;
+    }
+  }
+
+  for (i = 0; i < 8; i++) {
+    for (j = 3; j >= 0; j--) {
+      const b = (hash[i] >> (j * 8)) & 255;
+      result += (b < 16 ? '0' : '') + b.toString(16);
+    }
+  }
+  return result;
+}
+
 async function computeSha256(arrayBuffer) {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  if (window.crypto && window.crypto.subtle && typeof window.crypto.subtle.digest === 'function') {
+    try {
+      const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch {}
+  }
+  return jsSha256(arrayBuffer);
 }
 
 // Helper: Format bytes
