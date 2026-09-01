@@ -18,7 +18,7 @@ on:
 
 jobs:
   deploy:
-    name: ${{ github.event.inputs.action == 'destroy' && 'Terraform Destroy (Teardown)' || 'Smart Deploy / Fast Sync (AWS)' }}
+    name: 'Smart Deploy / Fast Sync (AWS)'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -109,23 +109,7 @@ jobs:
                     ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@$E_IP "
                       cd /opt/pravah
                       sudo git pull origin main
-                      cat <<EOF | sudo tee /opt/pravah/.env > /dev/null
-PORT=3001
-EDGE_NODE_ID=$NODE_ID
-EDGE_REGION=$REGION
-REDIS_HOST=edge-redis
-REDIS_PORT=6379
-CORE_API_URL=http://$EIP:3000
-KAFKA_BROKERS=$EIP:19092
-MINIO_ENDPOINT=$EIP
-MINIO_PORT=9000
-MINIO_ACCESS_KEY=admin_minio
-MINIO_SECRET_KEY=minio_password
-PEER_FETCH_TIMEOUT_MS=2000
-PEER_MAX_ATTEMPTS=3
-OTEL_EXPORTER_OTLP_ENDPOINT=http://$EIP:4318
-OTEL_SERVICE_NAME=pravah-$NODE_ID
-EOF
+                      printf 'PORT=3001\nEDGE_NODE_ID=%s\nEDGE_REGION=%s\nREDIS_HOST=edge-redis\nREDIS_PORT=6379\nCORE_API_URL=http://%s:3000\nKAFKA_BROKERS=%s:19092\nMINIO_ENDPOINT=%s\nMINIO_PORT=9000\nMINIO_ACCESS_KEY=admin_minio\nMINIO_SECRET_KEY=minio_password\nPEER_FETCH_TIMEOUT_MS=2000\nPEER_MAX_ATTEMPTS=3\nOTEL_EXPORTER_OTLP_ENDPOINT=http://%s:4318\nOTEL_SERVICE_NAME=pravah-%s\n' '$NODE_ID' '$REGION' '$EIP' '$EIP' '$EIP' '$EIP' '$NODE_ID' | sudo tee /opt/pravah/.env > /dev/null
                       sudo docker compose -f infra/docker/docker-compose.edge.yml --env-file /opt/pravah/.env up -d --build
                       sudo docker compose -f infra/docker/docker-compose.edge.yml --env-file /opt/pravah/.env restart edge-app
                     " || true
