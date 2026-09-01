@@ -19,22 +19,23 @@ services:
     container_name: pravah-edge
     restart: always
     ports:
-      - "${PORT:-3001}:3001"
+      - "3001:3001"
     environment:
       - PORT=3001
       - EDGE_NODE_ID=${EDGE_NODE_ID:-edge-node-01}
       - EDGE_REGION=${EDGE_REGION:-ap-south-1}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - CORE_API_URL=http://core-app:3000
-      - KAFKA_BROKERS=redpanda:9092
-      - MINIO_ENDPOINT=minio
-      - MINIO_PORT=9000
+      - REDIS_HOST=${REDIS_HOST:-edge-redis}
+      - REDIS_PORT=${REDIS_PORT:-6379}
+      - CORE_API_URL=${CORE_API_URL:-http://localhost:3000}
+      - KAFKA_BROKERS=${KAFKA_BROKERS:-localhost:19092}
+      - MINIO_ENDPOINT=${MINIO_ENDPOINT:-localhost}
+      - MINIO_PORT=${MINIO_PORT:-9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-admin_minio}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY:-minio_password}
       - PEER_FETCH_TIMEOUT_MS=2000
       - PEER_MAX_ATTEMPTS=3
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
-      - OTEL_SERVICE_NAME=pravah-edge-node-01
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://localhost:4318}
+      - OTEL_SERVICE_NAME=pravah-${EDGE_NODE_ID:-edge-node-01}
     networks:
       - pravah-net
 

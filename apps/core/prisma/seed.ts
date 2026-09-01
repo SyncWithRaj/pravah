@@ -16,6 +16,18 @@ const adapter = new PrismaPg({ connectionString: dbUrl });
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
+  console.log('🧹 Performing Clean Slate Database Reset...');
+  try {
+    await prisma.replicationStatus.deleteMany({});
+    await prisma.videoTranscode.deleteMany({});
+    await prisma.fileChunk.deleteMany({});
+    await prisma.fileVersion.deleteMany({});
+    await prisma.file.deleteMany({});
+    console.log('✅ All old files, versions, chunks, transcodes, and replication records cleared!');
+  } catch (e) {
+    console.warn('Note during clean wipe:', e);
+  }
+
   console.log('Seeding Phase 5A Edge Nodes...');
 
   await prisma.edgeNode.deleteMany();
@@ -55,6 +67,39 @@ async function main() {
       data: node,
     });
     console.log(`Created edge node: ${node.name} (${node.id})`);
+  }
+
+  console.log('Seeding Default RBAC Users...');
+  const argon2 = await import('argon2');
+
+  const defaultUsers = [
+    {
+      email: 'admin-rbac-test@pravah.io',
+      username: 'admin',
+      passwordHash: await argon2.hash('Admin123!@#'),
+      role: 'ADMIN' as const,
+    },
+    {
+      email: 'streamer-rbac-test@pravah.io',
+      username: 'streamer',
+      passwordHash: await argon2.hash('Stream123!@#'),
+      role: 'STREAMER' as const,
+    },
+    {
+      email: 'viewer-rbac-test@pravah.io',
+      username: 'viewer',
+      passwordHash: await argon2.hash('View123!@#'),
+      role: 'VIEWER' as const,
+    },
+  ];
+
+  for (const u of defaultUsers) {
+    await prisma.user.upsert({
+      where: { email: u.email },
+      update: { role: u.role },
+      create: u,
+    });
+    console.log(`Seeded user: ${u.email} [${u.role}]`);
   }
 
   console.log('Seeding finished.');

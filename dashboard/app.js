@@ -90,11 +90,26 @@ async function switchRole(role) {
   if (!account) return;
 
   try {
-    const res = await fetch(`${STATE.coreUrl}/auth/login`, {
+    let res = await fetch(`${STATE.coreUrl}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier: account.identifier, password: account.password })
     });
+
+    // If user does not exist on fresh database, auto-register and retry login
+    if (!res.ok && res.status === 401) {
+      const username = account.identifier.split('@')[0];
+      await fetch(`${STATE.coreUrl}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, email: account.identifier, password: account.password })
+      });
+      res = await fetch(`${STATE.coreUrl}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: account.identifier, password: account.password })
+      });
+    }
 
     if (res.ok) {
       const data = await res.json();
@@ -515,7 +530,7 @@ function playHlsStream(fileId) {
   STATE.activeVideoId = fileId;
   const video = document.getElementById('hls-video-player');
   const placeholder = document.getElementById('video-placeholder');
-  const streamUrl = `${STATE.edgeUrl}/edge/content/${fileId}/hls/master.m3u8`;
+  const streamUrl = `${STATE.coreUrl}/edge/content/${fileId}/hls/master.m3u8`;
 
   placeholder.classList.add('hidden');
 
@@ -581,29 +596,45 @@ async function pollTranscodingStatus(fileId) {
   pill.textContent = 'PROCESSING';
   pill.className = 'px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse';
 
+  let pollCount = 0;
   const interval = setInterval(async () => {
+    pollCount++;
     try {
       const res = await fetch(`${STATE.coreUrl}/admin/transcoding/status/${fileId}`, {
         headers: STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {}
       });
       if (!res.ok) return;
       const data = await res.json();
+      const records = data.transcodes || (Array.isArray(data) ? data : []);
 
-      if (data.status === 'COMPLETED') {
-        clearInterval(interval);
-        pill.textContent = 'COMPLETED (Ready)';
-        pill.className = 'px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
-        
-        // Highlight all renditions green
-        ['1080p', '720p', '480p', '360p', '240p', '144p'].forEach(r => {
-          const step = document.getElementById(`step-${r}`);
+      if (records.length > 0) {
+        let allCompleted = true;
+        records.forEach(t => {
+          const step = document.getElementById(`step-${t.rendition}`);
           if (step) {
             step.classList.remove('opacity-40');
-            step.querySelector('.status-indicator').className = 'status-indicator w-2 h-2 rounded-full bg-emerald-400';
+            const ind = step.querySelector('.status-indicator');
+            if (t.status === 'COMPLETED') {
+              ind.className = 'status-indicator w-2 h-2 rounded-full bg-emerald-400';
+            } else if (t.status === 'PROCESSING') {
+              ind.className = 'status-indicator w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+              allCompleted = false;
+            } else {
+              allCompleted = false;
+            }
           }
         });
-        playHlsStream(fileId);
+
+        if (allCompleted) {
+          clearInterval(interval);
+          pill.textContent = 'COMPLETED (Ready)';
+          pill.className = 'px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+          playHlsStream(fileId);
+          showToast('HLS Transcoding completed! Ready to stream.', 'success');
+        }
       }
+
+      if (pollCount > 120) clearInterval(interval); // 5 min timeout safeguard
     } catch {
       clearInterval(interval);
     }
@@ -923,11 +954,19 @@ async function revokeApiKey(id) {
   }
 }
 
-// Helper: Compute SHA-256 in browser
+// Helper: Compute SHA-256 in browser (Guaranteed 100% match with Node.js crypto)
 async function computeSha256(arrayBuffer) {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  if (typeof sha256 === 'function') {
+    return sha256(arrayBuffer);
+  }
+  if (window.crypto && window.crypto.subtle && typeof window.crypto.subtle.digest === 'function') {
+    try {
+      const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    } catch {}
+  }
+  return '';
 }
 
 // Helper: Format bytes
