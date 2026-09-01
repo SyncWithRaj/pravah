@@ -90,7 +90,7 @@ jobs:
       - name: Update Code on Live Running Instances
         if: ${{ github.event.inputs.action == 'update' }}
         env:
-          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY }}
         run: |
           if [ -z "$SSH_KEY" ]; then
             echo "Error: SSH_PRIVATE_KEY secret is not configured in repository secrets."
