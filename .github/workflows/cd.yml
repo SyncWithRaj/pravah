@@ -97,10 +97,17 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY }}
         run: |
-          # 1. Try resolving IP from Terraform state, fallback to AWS EC2 tag lookup
+          # 1. Try resolving Elastic IP directly, fallback to instance IP
           CORE_IP=$(terraform output -raw core_public_ip 2>/dev/null || echo "")
           if [ -z "$CORE_IP" ] || [ "$CORE_IP" = "Pending" ]; then
-            echo "🔍 Querying AWS EC2 directly for running Core server in ap-south-1..."
+            echo "🔍 Querying AWS for Pravah Core Elastic IP in ap-south-1..."
+            CORE_IP=$(aws ec2 describe-addresses \
+              --filters "Name=tag:Name,Values=pravah-core-eip" \
+              --query "Addresses[0].PublicIp" \
+              --output text \
+              --region ap-south-1 2>/dev/null || echo "")
+          fi
+          if [ -z "$CORE_IP" ] || [ "$CORE_IP" = "None" ]; then
             CORE_IP=$(aws ec2 describe-instances \
               --filters "Name=tag:Name,Values=pravah-core-server" "Name=instance-state-name,Values=running" \
               --query "Reservations[0].Instances[0].PublicIpAddress" \
