@@ -321,6 +321,11 @@ async function startChunkedUpload() {
   const file = STATE.activeUploadFile;
   if (!file) return;
 
+  // Auto-ensure token is present before uploading
+  if (!STATE.token) {
+    await switchRole('ADMIN');
+  }
+
   const btn = document.getElementById('btn-start-upload');
   btn.disabled = true;
   btn.querySelector('span').textContent = 'Ingesting Chunks...';
@@ -335,18 +340,21 @@ async function startChunkedUpload() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {})
+        'Authorization': `Bearer ${STATE.token}`
       },
       body: JSON.stringify({
-        fileName: file.name,
-        fileSize: file.size,
+        name: file.name,
+        totalSize: file.size,
         mimeType: mimeType,
         totalChunks: totalChunks
       })
     });
 
-    if (!initRes.ok) throw new Error(`Init failed (${initRes.status})`);
-    const { uploadId, fileId } = await initRes.json();
+    if (!initRes.ok) {
+      const errBody = await initRes.text();
+      throw new Error(`Init failed (${initRes.status}): ${errBody}`);
+    }
+    const { fileId } = await initRes.json();
 
     // 2. Upload Chunks Sequentially with SHA-256 Checksums
     const startTime = Date.now();
@@ -358,18 +366,21 @@ async function startChunkedUpload() {
       const chunkChecksum = await computeSha256(chunkBuffer);
 
       const formData = new FormData();
-      formData.append('uploadId', uploadId);
-      formData.append('chunkIndex', i.toString());
       formData.append('checksum', chunkChecksum);
-      formData.append('chunk', chunkBlob, `chunk_${i}`);
+      formData.append('file', chunkBlob, file.name);
 
-      const chunkRes = await fetch(`${STATE.coreUrl}/upload/chunk`, {
-        method: 'POST',
-        headers: STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {},
+      const chunkRes = await fetch(`${STATE.coreUrl}/upload/${fileId}/chunk/${i}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${STATE.token}`
+        },
         body: formData
       });
 
-      if (!chunkRes.ok) throw new Error(`Chunk ${i} upload failed`);
+      if (!chunkRes.ok) {
+        const chunkErr = await chunkRes.text();
+        throw new Error(`Chunk ${i} upload failed (${chunkRes.status}): ${chunkErr}`);
+      }
 
       // Update UI Progress
       const percent = Math.round(((i + 1) / totalChunks) * 100);
@@ -378,7 +389,7 @@ async function startChunkedUpload() {
       document.getElementById('upload-chunk-count').textContent = `Chunk ${i + 1} / ${totalChunks}`;
       
       const elapsedSec = (Date.now() - startTime) / 1000;
-      const speedMBps = (((i + 1) * STATE.CHUNK_SIZE) / (1024 * 1024) / elapsedSec).toFixed(1);
+      const speedMBps = (((i + 1) * STATE.CHUNK_SIZE) / (1024 * 1024) / Math.max(elapsedSec, 0.1)).toFixed(1);
       document.getElementById('upload-speed').textContent = `${speedMBps} MB/s`;
     }
 
@@ -387,9 +398,9 @@ async function startChunkedUpload() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {})
+        'Authorization': `Bearer ${STATE.token}`
       },
-      body: JSON.stringify({ uploadId })
+      body: JSON.stringify({ fileId })
     });
 
     if (!compRes.ok) throw new Error('Complete assembly failed');
