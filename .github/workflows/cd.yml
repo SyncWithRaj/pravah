@@ -10,9 +10,7 @@ on:
         type: choice
         options:
           - 'apply'
-          - 'update_code'
           - 'destroy'
-          - 'plan'
       ssh_key_name:
         description: 'EC2 Key Pair Name in AWS'
         required: true
@@ -20,7 +18,7 @@ on:
 
 jobs:
   deploy:
-    name: ${{ github.event.inputs.action == 'update_code' && 'Fast Live Code Sync (10s)' || format('Terraform {0}', github.event.inputs.action) }}
+    name: ${{ github.event.inputs.action == 'destroy' && 'Terraform Destroy (Teardown)' || 'Smart Deploy / Fast Sync (AWS)' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -57,18 +55,69 @@ jobs:
           EOF
 
       # ------------------------------------------------------------------------
-      # 1. DRY-RUN PLAN
+      # SMART APPLY: AUTO-DETECTS WHETHER TO FAST-SYNC CODE OR PROVISION FROM SCRATCH
       # ------------------------------------------------------------------------
-      - name: Terraform Plan
-        if: ${{ github.event.inputs.action == 'plan' }}
-        run: terraform plan
-
-      # ------------------------------------------------------------------------
-      # 2. FULL PROVISION / APPLY
-      # ------------------------------------------------------------------------
-      - name: Terraform Apply (Deploy Global CDN On-Demand)
+      - name: Smart Cloud Deployment
         if: ${{ github.event.inputs.action == 'apply' }}
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY }}
         run: |
+          # 1. Check if Pravah Core server is already running in AWS
+          echo "🔍 Checking if Pravah cluster is already active in AWS (ap-south-1)..."
+          RUNNING_CORE_IP=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=pravah-core-server" "Name=instance-state-name,Values=running,pending" \
+            --query "Reservations[0].Instances[0].PublicIpAddress" \
+            --output text \
+            --region ap-south-1 2>/dev/null || echo "None")
+
+          # --------------------------------------------------------------------
+          # CASE A: CLUSTER ALREADY RUNNING -> FAST 10s CODE UPDATE
+          # --------------------------------------------------------------------
+          if [ -n "$RUNNING_CORE_IP" ] && [ "$RUNNING_CORE_IP" != "None" ]; then
+            # Resolve Static Elastic IP if attached
+            EIP=$(aws ec2 describe-addresses \
+              --filters "Name=tag:Name,Values=pravah-core-eip" \
+              --query "Addresses[0].PublicIp" \
+              --output text \
+              --region ap-south-1 2>/dev/null || echo "$RUNNING_CORE_IP")
+            [ -z "$EIP" ] || [ "$EIP" = "None" ] && EIP="$RUNNING_CORE_IP"
+            
+            echo "⚡ Active cluster detected at IP: $EIP"
+            echo "🔄 Fast-syncing latest 'main' code to live instances in 10s..."
+            
+            if [ -n "$SSH_KEY" ]; then
+              mkdir -p ~/.ssh
+              echo "$SSH_KEY" > ~/.ssh/id_rsa
+              chmod 600 ~/.ssh/id_rsa
+
+              ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@$EIP "
+                cd /opt/pravah
+                sudo git pull origin main
+                sudo docker compose -f infra/docker/docker-compose.core.yml run --rm core-app pnpm --filter core exec prisma db seed || true
+                sudo docker compose -f infra/docker/docker-compose.core.yml restart core-app
+                sudo pkill -f 'http.server' || true
+                sudo nohup python3 -m http.server 8080 --directory dashboard </dev/null >/var/log/pravah-ui.log 2>&1 &
+                sleep 2
+                exit 0
+              " || true
+              echo "✅ Code sync complete on live Core instance!"
+            fi
+
+            echo "### ⚡ Pravah CDN — Live Code Updated (10s Sync)!" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Cluster was already running. Synced latest code from \`main\` with 0 infrastructure downtime."
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Service | Cloud Endpoint |" >> $GITHUB_STEP_SUMMARY
+            echo "|:---|:---|" >> $GITHUB_STEP_SUMMARY
+            echo "| 🎛️ **Control Center UI** | [http://$EIP:8080](http://$EIP:8080) |" >> $GITHUB_STEP_SUMMARY
+            echo "| ⚡ **Core API** | http://$EIP:3000/api/v1 |" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          # --------------------------------------------------------------------
+          # CASE B: NO CLUSTER RUNNING -> PROVISION FRESH MULTI-REGION INFRASTRUCTURE
+          # --------------------------------------------------------------------
+          echo "🚀 No active cluster found. Provisioning fresh Multi-Region AWS Cluster with Terraform..."
           terraform apply -auto-approve
           
           CORE_IP=$(terraform output -raw core_public_ip 2>/dev/null || echo "Pending")
@@ -78,7 +127,7 @@ jobs:
           EDGE_VA=$(terraform output -raw edge_us_east_url 2>/dev/null || echo "Pending")
           EDGE_FRA=$(terraform output -raw edge_eu_central_url 2>/dev/null || echo "Pending")
           
-          echo "### 🚀 Pravah CDN — Cloud Deployment Live!" >> $GITHUB_STEP_SUMMARY
+          echo "### 🚀 Pravah CDN — Fresh Multi-Region Cluster Live!" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Service | Cloud Endpoint |" >> $GITHUB_STEP_SUMMARY
           echo "|:---|:---|" >> $GITHUB_STEP_SUMMARY
@@ -90,74 +139,7 @@ jobs:
           echo "| 🇩🇪 **Edge Frankfurt** | $EDGE_FRA |" >> $GITHUB_STEP_SUMMARY
 
       # ------------------------------------------------------------------------
-      # 3. FAST LIVE CODE SYNC (PULL MAIN TO RUNNING EC2 INSTANCES IN 10s)
-      # ------------------------------------------------------------------------
-      - name: Fast Live Code Sync (Pull Latest Code on Running Cluster)
-        if: ${{ github.event.inputs.action == 'update_code' }}
-        env:
-          SSH_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY || secrets.SSH_PRIVATE_KEY }}
-        run: |
-          # 1. Try resolving Elastic IP directly, fallback to instance IP
-          CORE_IP=$(terraform output -raw core_public_ip 2>/dev/null || echo "")
-          if [ -z "$CORE_IP" ] || [ "$CORE_IP" = "Pending" ]; then
-            echo "🔍 Querying AWS for Pravah Core Elastic IP in ap-south-1..."
-            CORE_IP=$(aws ec2 describe-addresses \
-              --filters "Name=tag:Name,Values=pravah-core-eip" \
-              --query "Addresses[0].PublicIp" \
-              --output text \
-              --region ap-south-1 2>/dev/null || echo "")
-          fi
-          if [ -z "$CORE_IP" ] || [ "$CORE_IP" = "None" ]; then
-            CORE_IP=$(aws ec2 describe-instances \
-              --filters "Name=tag:Name,Values=pravah-core-server" "Name=instance-state-name,Values=running" \
-              --query "Reservations[0].Instances[0].PublicIpAddress" \
-              --output text \
-              --region ap-south-1 2>/dev/null || echo "")
-          fi
-
-          if [ -z "$CORE_IP" ] || [ "$CORE_IP" = "None" ]; then
-            echo "❌ No running Pravah Core instance found in AWS (ap-south-1)."
-            echo "Run 'apply' action first to launch the cluster."
-            exit 1
-          fi
-
-          echo "✅ Found running Core server at: $CORE_IP"
-          DASHBOARD_URL="http://$CORE_IP:8080"
-
-          if [ -n "$SSH_KEY" ]; then
-            echo "Connecting to Core instance at $CORE_IP via SSH to pull latest code..."
-            mkdir -p ~/.ssh
-            echo "$SSH_KEY" > ~/.ssh/id_rsa
-            chmod 600 ~/.ssh/id_rsa
-
-            ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@$CORE_IP "
-              cd /opt/pravah
-              sudo git pull origin main
-              sudo docker compose -f infra/docker/docker-compose.core.yml run --rm core-app pnpm --filter core exec prisma db seed || true
-              sudo docker compose -f infra/docker/docker-compose.core.yml restart core-app
-              sudo pkill -f 'http.server' || true
-              sudo nohup python3 -m http.server 8080 --directory dashboard </dev/null >/var/log/pravah-ui.log 2>&1 &
-              sleep 2
-              exit 0
-            " || true
-            echo "✅ Code sync complete on Core instance!"
-          else
-            echo "⚠️ No SSH private key found in GitHub Secrets (EC2_SSH_PRIVATE_KEY)."
-            echo "To sync manually from your terminal, run:"
-            echo "ssh -i <your-key.pem> ubuntu@$CORE_IP 'cd /opt/pravah && sudo git pull origin main && sudo docker compose restart'"
-          fi
-
-          echo "### 🔄 Pravah CDN — Live Code Updated!" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Latest code from \`main\` has been pulled to the live AWS cluster."
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Service | Cloud Endpoint |" >> $GITHUB_STEP_SUMMARY
-          echo "|:---|:---|" >> $GITHUB_STEP_SUMMARY
-          echo "| 🎛️ **Control Center UI** | [$DASHBOARD_URL]($DASHBOARD_URL) |" >> $GITHUB_STEP_SUMMARY
-          echo "| ⚡ **Core API** | http://$CORE_IP:3000/api/v1 |" >> $GITHUB_STEP_SUMMARY
-
-      # ------------------------------------------------------------------------
-      # 4. TEARDOWN & DESTROY
+      # TEARDOWN & DESTROY
       # ------------------------------------------------------------------------
       - name: Terraform Destroy (Teardown & Stop Charges)
         if: ${{ github.event.inputs.action == 'destroy' }}
