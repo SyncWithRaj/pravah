@@ -104,11 +104,18 @@ jobs:
                 EDGE_IPS=$(aws ec2 describe-instances --region $REGION --filters "Name=tag:Project,Values=pravah-cdn" "Name=tag:Role,Values=edge-node" "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].PublicIpAddress" --output text 2>/dev/null || echo "")
                 for E_IP in $EDGE_IPS; do
                   if [ -n "$E_IP" ] && [ "$E_IP" != "None" ]; then
-                    echo "⚡ Syncing Edge node at $E_IP ($REGION)..."
+                    NODE_ID=$(aws ec2 describe-instances --region $REGION --filters "Name=ip-address,Values=$E_IP" --query "Reservations[0].Instances[0].Tags[?Key=='Name'].Value|[0]" --output text 2>/dev/null | sed 's/pravah-//;s/-server//' || echo "edge-node-01")
+                    echo "⚡ Syncing Edge node $NODE_ID at $E_IP ($REGION)..."
                     ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@$E_IP "
                       cd /opt/pravah
                       sudo git pull origin main
-                      sudo docker compose -f infra/docker/docker-compose.edge.yml up -d --build
+                      sudo CORE_API_URL=http://$EIP:3000 \
+                           KAFKA_BROKERS=$EIP:19092 \
+                           MINIO_ENDPOINT=$EIP \
+                           OTEL_EXPORTER_OTLP_ENDPOINT=http://$EIP:4318 \
+                           EDGE_NODE_ID=$NODE_ID \
+                           EDGE_REGION=$REGION \
+                           docker compose -f infra/docker/docker-compose.edge.yml up -d --build
                       sudo docker compose -f infra/docker/docker-compose.edge.yml restart edge-app
                     " || true
                   fi
