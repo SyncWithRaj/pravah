@@ -109,14 +109,25 @@ jobs:
                     ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@$E_IP "
                       cd /opt/pravah
                       sudo git pull origin main
-                      sudo CORE_API_URL=http://$EIP:3000 \
-                           KAFKA_BROKERS=$EIP:19092 \
-                           MINIO_ENDPOINT=$EIP \
-                           OTEL_EXPORTER_OTLP_ENDPOINT=http://$EIP:4318 \
-                           EDGE_NODE_ID=$NODE_ID \
-                           EDGE_REGION=$REGION \
-                           docker compose -f infra/docker/docker-compose.edge.yml up -d --build
-                      sudo docker compose -f infra/docker/docker-compose.edge.yml restart edge-app
+                      cat <<EOF | sudo tee /opt/pravah/.env > /dev/null
+PORT=3001
+EDGE_NODE_ID=$NODE_ID
+EDGE_REGION=$REGION
+REDIS_HOST=edge-redis
+REDIS_PORT=6379
+CORE_API_URL=http://$EIP:3000
+KAFKA_BROKERS=$EIP:19092
+MINIO_ENDPOINT=$EIP
+MINIO_PORT=9000
+MINIO_ACCESS_KEY=admin_minio
+MINIO_SECRET_KEY=minio_password
+PEER_FETCH_TIMEOUT_MS=2000
+PEER_MAX_ATTEMPTS=3
+OTEL_EXPORTER_OTLP_ENDPOINT=http://$EIP:4318
+OTEL_SERVICE_NAME=pravah-$NODE_ID
+EOF
+                      sudo docker compose -f infra/docker/docker-compose.edge.yml --env-file /opt/pravah/.env up -d --build
+                      sudo docker compose -f infra/docker/docker-compose.edge.yml --env-file /opt/pravah/.env restart edge-app
                     " || true
                   fi
                 done
