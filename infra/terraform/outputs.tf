@@ -41,14 +41,29 @@ output "edge_mumbai_url" {
   value       = module.edge_mumbai.edge_content_url
 }
 
+output "edge_mumbai_public_ip" {
+  description = "Edge Node 01 (Mumbai - ap-south-1) Public IP"
+  value       = module.edge_mumbai.public_ip
+}
+
 output "edge_us_east_url" {
   description = "Edge Node 02 (Virginia - us-east-1) Content Delivery URL"
   value       = module.edge_us_east.edge_content_url
 }
 
+output "edge_us_east_public_ip" {
+  description = "Edge Node 02 (Virginia - us-east-1) Public IP"
+  value       = module.edge_us_east.public_ip
+}
+
 output "edge_eu_central_url" {
   description = "Edge Node 03 (Frankfurt - eu-central-1) Content Delivery URL"
   value       = module.edge_eu_central.edge_content_url
+}
+
+output "edge_eu_central_public_ip" {
+  description = "Edge Node 03 (Frankfurt - eu-central-1) Public IP"
+  value       = module.edge_eu_central.public_ip
 }
 
 # ==============================================================================

@@ -11,6 +11,7 @@ on:
         options:
           - 'apply'
           - 'destroy'
+          - 'update'
       ssh_key_name:
         description: 'EC2 Key Pair Name in AWS'
         required: true
@@ -84,3 +85,45 @@ jobs:
         run: |
           terraform destroy -auto-approve
           echo "### 🧹 Pravah CDN Cloud Resources Destroyed — Zero AWS Charges" >> $GITHUB_STEP_SUMMARY
+
+      # 3. Fast Code Update on Running Instances (Zero Infra Rebuilding)
+      - name: Update Code on Live Running Instances
+        if: ${{ github.event.inputs.action == 'update' }}
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          if [ -z "$SSH_KEY" ]; then
+            echo "Error: SSH_PRIVATE_KEY secret is not configured in repository secrets."
+            exit 1
+          fi
+
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+
+          CORE_IP=$(terraform output -raw core_public_ip)
+          EDGE_MUMBAI_IP=$(terraform output -raw edge_mumbai_public_ip)
+          EDGE_VA_IP=$(terraform output -raw edge_us_east_public_ip)
+          EDGE_FRA_IP=$(terraform output -raw edge_eu_central_public_ip)
+
+          echo "=== 1. Updating Core Server ($CORE_IP) ==="
+          ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@$CORE_IP '
+            cd /opt/pravah
+            sudo git fetch origin main
+            sudo git reset --hard origin/main
+            sudo docker compose -f infra/docker/docker-compose.core.yml run --rm core-app pnpm --filter core exec prisma db push --schema=prisma/schema.prisma
+            sudo docker compose -f infra/docker/docker-compose.core.yml up -d --build
+          '
+
+          echo "=== 2. Updating Edge Nodes ==="
+          for EDGE_IP in "$EDGE_MUMBAI_IP" "$EDGE_VA_IP" "$EDGE_FRA_IP"; do
+            echo "Updating Edge at $EDGE_IP..."
+            ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@$EDGE_IP '
+              cd /opt/pravah
+              sudo git fetch origin main
+              sudo git reset --hard origin/main
+              sudo docker compose -f infra/docker/docker-compose.edge.yml up -d --build
+            ' || echo "Warning: Failed to update Edge node at $EDGE_IP"
+          done
+
+          echo "### 🔄 Pravah CDN — Live Code Updated Successfully across all Nodes!" >> $GITHUB_STEP_SUMMARY
