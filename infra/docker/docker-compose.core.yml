@@ -168,6 +168,18 @@ services:
     networks:
       - pravah-net
 
+  # 11. Pravah Control Center UI Dashboard
+  dashboard:
+    image: nginx:alpine
+    container_name: pravah-dashboard
+    restart: always
+    ports:
+      - "8080:80"
+    volumes:
+      - ../../dashboard:/usr/share/nginx/html:ro
+    networks:
+      - pravah-net
+
 volumes:
   postgres_data:
   redis_data:
