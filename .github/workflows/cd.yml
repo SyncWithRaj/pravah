@@ -1,4 +1,4 @@
-name: CD - Multi-Region AWS Cloud Deployment (On-Demand)
+name: 'CD Pipeline - Multi-Region AWS Deployment'
 
 on:
   workflow_dispatch:
