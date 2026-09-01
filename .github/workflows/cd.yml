@@ -98,6 +98,23 @@ jobs:
                 sudo docker compose -f infra/docker/docker-compose.core.yml restart core-app dashboard
               "
               echo "✅ Code sync complete on live Core instance!"
+
+              echo "🔄 Syncing remote Edge nodes across regions..."
+              for REGION in ap-south-1 us-east-1 eu-central-1; do
+                EDGE_IPS=$(aws ec2 describe-instances --region $REGION --filters "Name=tag:Project,Values=pravah-cdn" "Name=tag:Role,Values=edge-node" "Name=instance-state-name,Values=running" --query "Reservations[*].Instances[*].PublicIpAddress" --output text 2>/dev/null || echo "")
+                for E_IP in $EDGE_IPS; do
+                  if [ -n "$E_IP" ] && [ "$E_IP" != "None" ]; then
+                    echo "⚡ Syncing Edge node at $E_IP ($REGION)..."
+                    ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@$E_IP "
+                      cd /opt/pravah
+                      sudo git pull origin main
+                      sudo docker compose -f infra/docker/docker-compose.edge.yml up -d --build
+                      sudo docker compose -f infra/docker/docker-compose.edge.yml restart edge-app
+                    " || true
+                  fi
+                done
+              done
+              echo "✅ All Edge nodes synced and healthy!"
             fi
 
             echo "### ⚡ Pravah CDN — Live Code Updated (10s Sync)!" >> $GITHUB_STEP_SUMMARY
