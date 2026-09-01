@@ -23,7 +23,7 @@ output "grafana_url" {
   value       = "http://${aws_eip.core_eip.public_ip}:3002"
 }
 
-output "jaeger_url" {
-  description = "Direct URL for the Jaeger Distributed Tracing UI"
-  value       = "http://${aws_eip.core_eip.public_ip}:16686"
+output "dashboard_url" {
+  description = "Direct URL for the Pravah Control Center Dashboard UI"
+  value       = "http://${aws_eip.core_eip.public_ip}:8080"
 }
