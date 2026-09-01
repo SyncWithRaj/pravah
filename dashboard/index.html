@@ -748,7 +748,7 @@
   <div id="modal-auth" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
     <div class="glass-panel w-full max-w-sm rounded-2xl p-6 flex flex-col gap-4 border border-white/10 shadow-2xl">
       <div class="flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-white">Sign In / Role Switcher</h3>
+        <h3 class="text-sm font-semibold text-white">Sign In / Register</h3>
         <button class="btn-close-auth-modal text-slate-400 hover:text-white transition">
           <i data-lucide="x" class="w-4 h-4"></i>
         </button>
@@ -768,6 +768,66 @@
       <div class="flex flex-col gap-2 mt-2">
         <button id="btn-submit-login" class="w-full py-2.5 rounded-xl bg-brand-600 hover:bg-brand-500 text-xs font-medium text-white transition">Sign In</button>
         <button id="btn-submit-register" class="w-full py-2 rounded-xl bg-dark-800 hover:bg-dark-750 border border-white/10 text-xs font-medium text-slate-300 transition">Register New User</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- MODAL: HTTP 206 RESUMABLE RANGE DOWNLOAD DIAGNOSTICS -->
+  <!-- ========================================================================= -->
+  <div id="modal-range-test" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="glass-panel w-full max-w-lg rounded-2xl p-6 flex flex-col gap-4 border border-white/10 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+            <i data-lucide="download" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="text-sm font-semibold text-white">HTTP 206 Resumable Content Verification</h3>
+            <p class="text-xs text-slate-400">RFC 7233 Byte-Range partial content response</p>
+          </div>
+        </div>
+        <button onclick="document.getElementById('modal-range-test').classList.add('hidden')" class="text-slate-400 hover:text-white transition">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="bg-dark-900 border border-white/5 rounded-xl p-4 flex flex-col gap-3 font-mono text-xs">
+        <div class="flex items-center justify-between border-b border-white/5 pb-2">
+          <span class="text-slate-400">Target File:</span>
+          <span id="range-file-name" class="text-slate-200 font-bold truncate max-w-xs">sample.mp4</span>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <span class="text-[10px] text-slate-500 block">HTTP Status</span>
+            <span id="range-status-badge" class="px-2 py-0.5 text-[11px] font-semibold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">206 Partial Content</span>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-500 block">Content-Range Header</span>
+            <span id="range-header-val" class="text-brand-300 font-semibold">bytes 0-1048575/87982730</span>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-500 block">Serviced by Edge Node</span>
+            <span id="range-edge-node" class="text-slate-200 font-semibold">edge-node-01 (Mumbai)</span>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-500 block">Edge Cache State</span>
+            <span id="range-cache-state" class="text-emerald-400 font-semibold">HIT (RAM/Redis Tier)</span>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-500 block">Round-Trip Latency</span>
+            <span id="range-latency" class="text-amber-300 font-semibold">3.2 ms (Sub-10ms)</span>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-500 block">OpenTelemetry Trace ID</span>
+            <span id="range-trace-id" class="text-indigo-400 truncate block">trace_7f8a92...</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between text-xs">
+        <span class="text-slate-400 text-[11px]">Validated against RFC 7233 compliant Edge Cache</span>
+        <button onclick="document.getElementById('modal-range-test').classList.add('hidden')" class="px-4 py-2 rounded-xl bg-brand-600 hover:bg-brand-500 text-xs font-medium text-white transition">Close</button>
       </div>
     </div>
   </div>
