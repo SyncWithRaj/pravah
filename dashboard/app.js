@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   refreshClusterHealth();
   refreshDLQ();
   refreshApiKeys();
+  await fetchExistingFiles();
   
   // Periodic node health poll every 10s
   setInterval(refreshClusterHealth, 10000);
@@ -78,6 +79,8 @@ async function switchRole(role) {
     showToast('Switched to Anonymous (Public / No Auth)', 'info');
     refreshDLQ();
     refreshApiKeys();
+    STATE.uploadedFiles = [];
+    renderFilesList();
     return;
   }
 
@@ -100,6 +103,7 @@ async function switchRole(role) {
       await fetchUserProfile();
       refreshDLQ();
       refreshApiKeys();
+      await fetchExistingFiles();
     } else {
       showToast(`Auto-login for ${role} failed`, 'error');
     }
@@ -300,7 +304,7 @@ function initDropZone() {
   });
 
   btnStartUpload.addEventListener('click', startChunkedUpload);
-  document.getElementById('btn-refresh-files')?.addEventListener('click', renderFilesList);
+  document.getElementById('btn-refresh-files')?.addEventListener('click', fetchExistingFiles);
 }
 
 function handleFileSelected(file) {
@@ -424,10 +428,37 @@ async function startChunkedUpload() {
 
     btn.disabled = false;
     btn.querySelector('span').textContent = 'Upload Completed!';
+    await fetchExistingFiles();
   } catch (err) {
     showToast(`Upload Error: ${err.message}`, 'error');
     btn.disabled = false;
     btn.querySelector('span').textContent = 'Retry Upload';
+  }
+}
+
+// Fetch Existing Files from Backend on Page Load / Refresh
+async function fetchExistingFiles() {
+  if (!STATE.token) return;
+  try {
+    const res = await fetch(`${STATE.coreUrl}/metadata/files?limit=50`, {
+      headers: { 'Authorization': `Bearer ${STATE.token}` }
+    });
+    if (res.ok) {
+      const result = await res.json();
+      if (result.data && Array.isArray(result.data)) {
+        STATE.uploadedFiles = result.data.map(f => ({
+          fileId: f.id,
+          fileName: f.name,
+          size: parseInt(f.totalSize || '0', 10),
+          isVideo: f.mimeType?.startsWith('video/') || f.name?.match(/\.(mp4|mkv|mov|webm)$/i),
+          uploadedAt: new Date(f.createdAt).toLocaleTimeString(),
+          status: f.status
+        }));
+        renderFilesList();
+      }
+    }
+  } catch (e) {
+    console.error('Failed to fetch existing files', e);
   }
 }
 
