@@ -18,13 +18,12 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('🧹 Performing Clean Slate Database Reset...');
   try {
-    await prisma.dlqMessage.deleteMany({});
     await prisma.replicationStatus.deleteMany({});
     await prisma.videoTranscode.deleteMany({});
     await prisma.fileChunk.deleteMany({});
     await prisma.fileVersion.deleteMany({});
     await prisma.file.deleteMany({});
-    console.log('✅ All old files, versions, chunks, transcodes, and DLQs cleared!');
+    console.log('✅ All old files, versions, chunks, transcodes, and replication records cleared!');
   } catch (e) {
     console.warn('Note during clean wipe:', e);
   }
