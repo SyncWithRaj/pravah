@@ -4,8 +4,11 @@ import {
   MetadataController,
   InternalMetadataController,
 } from './metadata.controller';
+import { KafkaModule } from '../common/kafka/kafka.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
+  imports: [AuthModule, KafkaModule],
   controllers: [MetadataController, InternalMetadataController],
   providers: [MetadataService],
   exports: [MetadataService],

@@ -10,12 +10,12 @@ import {
 } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { DownloadService, DownloadResult } from './download.service';
-import { JwtAuthGuard, CurrentUser } from '../auth';
+import { UnifiedAuthGuard, CurrentUser } from '../auth';
 import { User } from '@prisma/client';
 import { RoutingService } from '../common/routing/routing.service';
 import { trace } from '@opentelemetry/api';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(UnifiedAuthGuard)
 @Controller('download')
 export class DownloadController {
   constructor(
