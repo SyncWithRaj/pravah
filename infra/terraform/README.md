@@ -1,108 +1,40 @@
-# Pravah Distributed CDN — Multi-Region AWS Terraform Deployment
+# 🌍 Pravah CDN — Terraform Infrastructure
 
-This directory contains production Infrastructure-as-Code (IaC) using Terraform to provision a distributed multi-region Content Delivery Network across AWS.
-
----
-
-## 1. Cloud Architecture & Region Topology
-
-```
-                               ┌────────────────────────────────────────────────────────┐
-                               │               AWS MULTI-REGION TOPOLOGY                │
-                               └──────────────────────────┬─────────────────────────────┘
-                                                          │
-              ┌───────────────────────────────────────────┼───────────────────────────────────────────┐
-              │                                           │                                           │
-              ▼                                           ▼                                           ▼
-┌───────────────────────────┐               ┌───────────────────────────┐               ┌───────────────────────────┐
-│   ASIA PACIFIC (MUMBAI)   │               │   US EAST (N. VIRGINIA)   │               │      EUROPE (FRANKFURT)   │
-│       (ap-south-1)        │               │        (us-east-1)        │               │       (eu-central-1)      │
-├───────────────────────────┤               ├───────────────────────────┤               ├───────────────────────────┤
-│ • EC2: Core Node          │               │ • EC2: Edge Node 02       │               │ • EC2: Edge Node 03       │
-│   (t3.medium)             │               │   (t3.small)              │               │   (t3.small)              │
-│ • PostgreSQL (DB & Meta)  │               │ • Edge Content API (:3001)│               │ • Edge Content API (:3001)│
-│ • MinIO S3 Origin Store   │               │ • Edge Redis RAM Cache    │               │ • Edge Redis RAM Cache    │
-│ • Redpanda / Kafka Bus    │               │ • Promtail Log Shipper    │               │ • Promtail Log Shipper    │
-│ • Prometheus & Grafana    │               └───────────────────────────┘               └───────────────────────────┘
-│ • Jaeger Distributed Trace│
-│ • EC2: Edge Node 01       │
-│   (t3.small - Local Edge) │
-└───────────────────────────┘
-```
+This directory contains the Infrastructure as Code (Terraform) modules and deployment configurations for Pravah CDN across different deployment architectures.
 
 ---
 
-## 2. Prerequisites
+## 📁 Directory Structure
 
-1. **AWS CLI** installed and authenticated:
-   ```bash
-   aws configure
-   ```
-2. **Terraform CLI** ($\ge 1.5.0$):
-   ```bash
-   terraform version
-   ```
-3. **AWS EC2 Key Pair**:
-   Create an EC2 Key Pair (e.g. `pravah-key`) in `ap-south-1`, `us-east-1`, and `eu-central-1` (or import your public key).
-
----
-
-## 3. Quickstart Deployment
-
-### Step 1: Configure Variables
-```bash
-cd infra/terraform
-cp terraform.tfvars.example terraform.tfvars
 ```
-Edit `terraform.tfvars` with your key name:
-```hcl
-aws_key_name       = "pravah-key"
-core_instance_type = "t3.medium"
-edge_instance_type = "t3.small"
-```
-
-### Step 2: Initialize & Validate
-```bash
-terraform init
-terraform validate
-```
-
-### Step 3: Review Plan & Deploy
-```bash
-terraform plan
-terraform apply
+infra/terraform/
+├── ec2-multi-region/              # 1. Multi-Region Standalone EC2 Infrastructure
+│   ├── modules/
+│   │   ├── core_node/             # Central Origin (Mumbai ap-south-1)
+│   │   ├── edge_node/             # Distributed Edge PoPs (Mumbai, Virginia, Frankfurt)
+│   │   ├── network/               # Multi-Region VPCs and Subnets
+│   │   └── observability/         # Prometheus, Grafana, Jaeger Setup
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   └── README.md
+│
+├── eks-load-test/                 # 2. High-Scale EKS Load Benchmark Cluster
+│   ├── eks.tf                     # AWS EKS Managed Cluster
+│   ├── load-generator.tf          # Distributed k6 / Locust load generators
+│   ├── deploy_and_test.sh         # Automated deploy and 100k RPS runner
+│   └── BENCHMARK_ANALYSIS.md
+│
+└── eks-multiregion-deployment/    # 3. Production Multi-Region EKS Deployment
+    └── .gitkeep                   # (To be populated with Multi-Geo EKS clusters)
 ```
 
 ---
 
-## 4. Verification & Testing
+## 🚀 Deployment Types
 
-Once deployment completes, Terraform outputs the public endpoints:
-
-```bash
-# 1. Health check Core Control Plane
-curl http://<CORE_PUBLIC_IP>:3000/api/v1/health
-
-# 2. Access Grafana Dashboards
-open http://<CORE_PUBLIC_IP>:3002
-
-# 3. Access Jaeger Distributed Request Waterfall
-open http://<CORE_PUBLIC_IP>:16686
-
-# 4. Test Multi-Region GeoDNS Routing from US
-curl -s -D - -H "x-test-client-region: us-east-1" \
-  http://<CORE_PUBLIC_IP>:3000/api/v1/download/<FILE_ID>
-
-# 5. Test Multi-Region GeoDNS Routing from Europe
-curl -s -D - -H "x-test-client-region: eu-central-1" \
-  http://<CORE_PUBLIC_IP>:3000/api/v1/download/<FILE_ID>
-```
-
----
-
-## 5. Cleanup / Teardown
-
-To tear down all AWS resources and stop billing:
-```bash
-terraform destroy
-```
+| Architecture | Directory | Use Case |
+| :--- | :--- | :--- |
+| **Multi-Region EC2 PoPs** | `ec2-multi-region/` | Real-world global Point-of-Presence (PoP) edge CDN delivery close to end users in Mumbai, Virginia, and Frankfurt. |
+| **EKS Scale Benchmark** | `eks-load-test/` | High-density 100k RPS stress testing and bottleneck verification. |
+| **Multi-Region EKS** | `eks-multiregion-deployment/` | Production multi-region Kubernetes clusters with auto-scaling edge pods and central Mumbai core. |
