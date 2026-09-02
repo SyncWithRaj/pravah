@@ -21,6 +21,7 @@ import { Upload } from '@aws-sdk/lib-storage';
 export class MinioService implements OnModuleInit {
   private readonly logger = new Logger(MinioService.name);
   private s3Client: S3Client;
+  private presignerClient: S3Client;
   private bucketName: string;
 
   constructor(private readonly configService: ConfigService) {
@@ -43,6 +44,16 @@ export class MinioService implements OnModuleInit {
     const protocol = useSsl ? 'https' : 'http';
     const endpointUrl = `${protocol}://${endpoint}:${port}`;
 
+    const publicEndpoint = this.configService.get<string>(
+      'MINIO_PUBLIC_ENDPOINT',
+      'localhost',
+    );
+    const publicPort = this.configService.get<string>(
+      'MINIO_PUBLIC_PORT',
+      '9000',
+    );
+    const publicEndpointUrl = `${protocol}://${publicEndpoint}:${publicPort}`;
+
     this.bucketName = this.configService.get<string>(
       'MINIO_BUCKET_NAME',
       'pravah-origin',
@@ -50,6 +61,16 @@ export class MinioService implements OnModuleInit {
 
     this.s3Client = new S3Client({
       endpoint: endpointUrl,
+      region: 'us-east-1',
+      credentials: {
+        accessKeyId: accessKey,
+        secretAccessKey: secretKey,
+      },
+      forcePathStyle: true,
+    });
+
+    this.presignerClient = new S3Client({
+      endpoint: publicEndpointUrl,
       region: 'us-east-1',
       credentials: {
         accessKeyId: accessKey,
@@ -346,7 +367,7 @@ export class MinioService implements OnModuleInit {
         : undefined,
     });
 
-    const client = this.s3Client as unknown as Parameters<
+    const client = (this.presignerClient || this.s3Client) as unknown as Parameters<
       typeof getSignedUrl
     >[0];
 

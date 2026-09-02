@@ -2,16 +2,21 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { MinioService } from '../common/minio/minio.service';
+import { KafkaService } from '../common/kafka/kafka.service';
 import { GetFilesQueryDto } from './dto/get-files-query.dto';
 
 @Injectable()
 export class MetadataService {
+  private readonly logger = new Logger(MetadataService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly minioService: MinioService,
+    private readonly kafkaService: KafkaService,
   ) {}
 
   async findAll(userId: string, query: GetFilesQueryDto) {
@@ -145,7 +150,13 @@ export class MetadataService {
       where: { id: fileId },
     });
 
-    return { success: true, message: 'File deleted completely' };
+    // Broadcast cache invalidation across all edge nodes via Kafka
+    this.kafkaService.emitCacheInvalidate(fileId);
+    this.logger.log(
+      `[Cascade Delete] Deleted file ${fileId} from MinIO & PostgreSQL and broadcasted cache.invalidate over Kafka`,
+    );
+
+    return { success: true, message: 'File deleted completely and cache invalidated' };
   }
 
   async findInternalVersion(fileId: string, versionNumber: number) {

@@ -1,371 +1,503 @@
 // ============================================================================
-// Pravah CDN — Comprehensive Control & Operations Center Logic (v2 Enterprise)
-// Minimalist, Clean Dark Architecture (Tailwind + HLS.js + Chart.js + Socket.IO)
+// Pravah CDN — Comprehensive Enterprise Control & Operations Center (v3.0)
+// Complete Route Wiring, Real Error Handling, Range 206, BullMQ Stepper & Logs
 // ============================================================================
 
 const HOSTNAME = window.location.hostname || 'localhost';
+const CORE_API_URL = `http://${HOSTNAME}:3000/api/v1`;
+const CORE_BASE_URL = `http://${HOSTNAME}:3000`;
+const EDGE_URL = `http://${HOSTNAME}:3001`;
 
+// Application Global State
 const STATE = {
-  coreUrl: `http://${HOSTNAME}:3000/api/v1`,
-  edgeUrl: `http://${HOSTNAME}:3001`,
-  token: localStorage.getItem('pravah_jwt_token') || null,
-  user: null,
-  activeUploadFile: null,
-  CHUNK_SIZE: 1024 * 1024, // 1MB chunks
+  token: localStorage.getItem('pravah_jwt_token') || '',
+  user: JSON.parse(localStorage.getItem('pravah_user') || 'null'),
+  selectedFile: null,
+  activeUpload: JSON.parse(localStorage.getItem('pravah_active_upload') || 'null'),
+  isUploading: false,
+  isPaused: false,
+  abortController: null,
   hlsPlayer: null,
   telemetryChart: null,
   socket: null,
-  uploadedFiles: [],
-  activeVideoId: null,
-  nodes: {
-    'edge-node-01': { name: 'Mumbai, India', region: 'ap-south-1', status: 'HEALTHY', latency: '1.2 ms', endpoint: `http://${HOSTNAME}:3001` },
-    'edge-node-02': { name: 'Frankfurt, Germany', region: 'eu-central-1', status: 'HEALTHY', latency: '2.4 ms', endpoint: `http://${HOSTNAME}:3001` },
-    'edge-node-03': { name: 'Virginia, USA', region: 'us-east-1', status: 'HEALTHY', latency: '1.8 ms', endpoint: `http://${HOSTNAME}:3001` },
+  nodes: {},
+  devLogs: []
+};
+
+// ============================================================================
+// 1. INITIALIZATION & ROUTING SETUP
+// ============================================================================
+document.addEventListener('DOMContentLoaded', () => {
+  if (window.lucide) lucide.createIcons();
+
+  setupNavigationTabs();
+  setupAuthFormListeners();
+  setupUploadListeners();
+  setupDevInspector();
+  setupSocketIO();
+
+  if (STATE.token && STATE.user) {
+    showDashboardView();
+  } else {
+    showAuthView();
   }
-};
-
-// Role Account Credentials Map
-const ROLE_ACCOUNTS = {
-  ADMIN: { identifier: 'admin-rbac-test@pravah.io', password: 'Admin123!@#', avatar: 'A' },
-  STREAMER: { identifier: 'streamer-rbac-test@pravah.io', password: 'Stream123!@#', avatar: 'S' },
-  VIEWER: { identifier: 'viewer-rbac-test@pravah.io', password: 'View123!@#', avatar: 'V' },
-  ANONYMOUS: { identifier: null, password: null, avatar: '?' }
-};
-
-// ============================================================================
-// 1. INITIALIZATION & AUTHENTICATION
-// ============================================================================
-document.addEventListener('DOMContentLoaded', async () => {
-  initTabNavigation();
-  initModals();
-  initDropZone();
-  initTelemetryChart();
-  initWebSocket();
-  initRoleSelector();
-  
-  await switchRole('ADMIN');
-
-  refreshClusterHealth();
-  refreshDLQ();
-  refreshApiKeys();
-  await fetchExistingFiles();
-  
-  setInterval(refreshClusterHealth, 10000);
 });
 
-function initRoleSelector() {
-  const selector = document.getElementById('role-selector');
-  if (!selector) return;
+// Update host labels in UI
+document.getElementById('label-core-host').textContent = `:3000`;
+document.getElementById('label-edge-host').textContent = `:3001`;
 
-  selector.addEventListener('change', async (e) => {
-    const selectedRole = e.target.value;
-    await switchRole(selectedRole);
-  });
-}
-
-async function switchRole(role) {
-  const avatar = document.getElementById('user-avatar-initial');
-  const selector = document.getElementById('role-selector');
-  if (selector) selector.value = role;
-
-  if (role === 'ANONYMOUS') {
-    STATE.token = null;
-    STATE.user = { username: 'Anonymous', role: 'ANONYMOUS' };
-    localStorage.removeItem('pravah_jwt_token');
-    if (avatar) avatar.textContent = '?';
-    showToast('Switched to Anonymous (Public / No Auth)', 'info');
-    updateUserUI();
-    refreshDLQ();
-    refreshApiKeys();
-    STATE.uploadedFiles = [];
-    renderFilesList();
-    return;
-  }
-
-  const account = ROLE_ACCOUNTS[role];
-  if (!account) return;
-
-  try {
-    let res = await fetch(`${STATE.coreUrl}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier: account.identifier, password: account.password })
-    });
-
-    if (!res.ok && res.status === 401) {
-      const username = account.identifier.split('@')[0];
-      await fetch(`${STATE.coreUrl}/auth/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, email: account.identifier, password: account.password })
-      });
-      res = await fetch(`${STATE.coreUrl}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: account.identifier, password: account.password })
-      });
-    }
-
-    if (res.ok) {
-      const data = await res.json();
-      STATE.token = data.token || data.accessToken || data.access_token;
-      STATE.user = data.user || { username: account.identifier.split('@')[0], role: role };
-      localStorage.setItem('pravah_jwt_token', STATE.token);
-      if (avatar) avatar.textContent = account.avatar;
-      showToast(`Auto-authenticated as ${role}`, 'success');
-      updateUserUI();
-      refreshDLQ();
-      refreshApiKeys();
-      await fetchExistingFiles();
-    } else {
-      showToast(`Auto-login for ${role} failed`, 'error');
-    }
-  } catch (err) {
-    showToast(`Role switch error: ${err.message}`, 'error');
-  }
-}
-
-function initTabNavigation() {
-  const tabs = document.querySelectorAll('.nav-tab');
-  tabs.forEach(tab => {
+function setupNavigationTabs() {
+  document.querySelectorAll('.nav-tab').forEach(tab => {
     tab.addEventListener('click', () => {
-      tabs.forEach(t => {
-        t.classList.remove('active', 'bg-dark-800', 'text-slate-200', 'border-white/10');
-        t.classList.add('text-slate-400', 'border-transparent');
+      document.querySelectorAll('.nav-tab').forEach(t => {
+        t.classList.remove('active', 'bg-brand-600', 'text-white', 'shadow-sm', 'shadow-brand-500/20');
+        t.classList.add('text-slate-400');
       });
-      tab.classList.add('active', 'bg-dark-800', 'text-slate-200', 'border-white/10');
-      tab.classList.remove('text-slate-400', 'border-transparent');
+      tab.classList.add('active', 'bg-brand-600', 'text-white', 'shadow-sm', 'shadow-brand-500/20');
+      tab.classList.remove('text-slate-400');
 
       const targetId = tab.getAttribute('data-tab');
       document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
       const targetContent = document.getElementById(targetId);
       if (targetContent) targetContent.classList.remove('hidden');
 
+      // Trigger tab-specific refresh
+      if (targetId === 'tab-ingest') refreshFilesList();
+      if (targetId === 'tab-topology') refreshTopologyNodes();
+      if (targetId === 'tab-dlq') refreshDLQTable();
+      if (targetId === 'tab-apikeys') refreshApiKeys();
+      if (targetId === 'tab-telemetry') initTelemetryChart();
       if (window.lucide) lucide.createIcons();
     });
   });
 }
 
-function initModals() {
-  const modalAuth = document.getElementById('modal-auth');
-  const modalCreateKey = document.getElementById('modal-create-key');
-
-  document.getElementById('btn-open-auth')?.addEventListener('click', () => {
-    modalAuth.classList.remove('hidden');
-  });
-
-  document.getElementById('btn-open-create-key')?.addEventListener('click', () => {
-    document.getElementById('created-key-card').classList.add('hidden');
-    document.getElementById('new-key-name').value = '';
-    modalCreateKey.classList.remove('hidden');
-  });
-
-  document.querySelectorAll('.btn-close-modal').forEach(btn => {
-    btn.addEventListener('click', () => modalCreateKey.classList.add('hidden'));
-  });
-
-  document.querySelectorAll('.btn-close-auth-modal').forEach(btn => {
-    btn.addEventListener('click', () => modalAuth.classList.add('hidden'));
-  });
-
-  document.getElementById('btn-submit-login')?.addEventListener('click', async () => {
-    const email = document.getElementById('auth-email').value;
-    const password = document.getElementById('auth-password').value;
-    await loginUser(email, password);
-    modalAuth.classList.add('hidden');
-  });
-
-  document.getElementById('btn-submit-register')?.addEventListener('click', async () => {
-    const email = document.getElementById('auth-email').value;
-    const password = document.getElementById('auth-password').value;
-    const username = email.split('@')[0] || 'User' + Math.floor(Math.random() * 1000);
-    await registerUser(username, email, password);
-  });
+// ============================================================================
+// 2. AUTHENTICATION & RBAC PORTAL (REGISTER / LOGIN / DEMO)
+// ============================================================================
+function showAuthView() {
+  document.getElementById('view-auth').classList.remove('hidden');
+  document.getElementById('view-dashboard').classList.add('hidden');
 }
 
-async function loginUser(identifier, password) {
-  try {
-    const res = await fetch(`${STATE.coreUrl}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier, password })
-    });
-    if (res.ok) {
-      const data = await res.json();
-      STATE.token = data.token || data.accessToken || data.access_token;
-      STATE.user = data.user || STATE.user;
-      localStorage.setItem('pravah_jwt_token', STATE.token);
-      updateUserUI();
-      showToast('Signed in successfully', 'success');
-      refreshDLQ();
-      refreshApiKeys();
-      await fetchExistingFiles();
-    } else {
-      showToast('Login failed: Invalid credentials', 'error');
-    }
-  } catch (err) {
-    showToast(`Login error: ${err.message}`, 'error');
-  }
+function showDashboardView() {
+  document.getElementById('view-auth').classList.add('hidden');
+  document.getElementById('view-dashboard').classList.remove('hidden');
+  updateUserProfileUI();
+  refreshFilesList();
+  refreshTopologyNodes();
 }
 
-async function registerUser(username, email, password) {
-  try {
-    const res = await fetch(`${STATE.coreUrl}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password })
-    });
-    if (res.ok) {
-      showToast('Registration successful! Signing in...', 'success');
-      await loginUser(email, password);
-      document.getElementById('modal-auth').classList.add('hidden');
-    } else {
-      const err = await res.json();
-      showToast(err.message?.[0] || 'Registration failed', 'error');
-    }
-  } catch (err) {
-    showToast(`Registration error: ${err.message}`, 'error');
-  }
-}
-
-function updateUserUI() {
+function updateUserProfileUI() {
   if (!STATE.user) return;
-  const name = STATE.user.username || STATE.user.email?.split('@')[0] || 'Admin';
-  const role = STATE.user.role || 'VIEWER';
-  
-  const nameEl = document.getElementById('user-display-name');
-  if (nameEl) nameEl.textContent = name;
-  const avatarEl = document.getElementById('user-avatar-initial');
-  if (avatarEl) avatarEl.textContent = name.charAt(0).toUpperCase();
-  
-  const roleBadge = document.getElementById('user-role-badge');
-  if (roleBadge) {
-    roleBadge.textContent = role;
-    if (role === 'ADMIN') {
-      roleBadge.className = 'px-1.5 py-0.5 text-[9px] font-semibold uppercase rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30';
-    } else if (role === 'STREAMER') {
-      roleBadge.className = 'px-1.5 py-0.5 text-[9px] font-semibold uppercase rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
-    } else {
-      roleBadge.className = 'px-1.5 py-0.5 text-[9px] font-semibold uppercase rounded bg-slate-500/20 text-slate-300 border border-slate-500/30';
+  const nameEl = document.getElementById('nav-user-name');
+  const roleEl = document.getElementById('nav-user-role');
+  const avatarEl = document.getElementById('user-avatar');
+  const emailEl = document.getElementById('menu-user-email');
+
+  const username = STATE.user.username || 'User';
+  const role = STATE.user.role || 'USER';
+
+  if (nameEl) nameEl.textContent = username;
+  if (roleEl) {
+    roleEl.textContent = role;
+    if (role === 'ADMIN') roleEl.className = 'text-[9px] font-bold uppercase tracking-wider text-amber-400';
+    else if (role === 'STREAMER') roleEl.className = 'text-[9px] font-bold uppercase tracking-wider text-indigo-400';
+    else roleEl.className = 'text-[9px] font-bold uppercase tracking-wider text-teal-400';
+  }
+  if (avatarEl) avatarEl.textContent = username.charAt(0).toUpperCase();
+  if (emailEl) emailEl.textContent = STATE.user.email || `${username}@pravah.io`;
+}
+
+function setupAuthFormListeners() {
+  const tabLogin = document.getElementById('auth-tab-login');
+  const tabRegister = document.getElementById('auth-tab-register');
+  const formLogin = document.getElementById('form-login');
+  const formRegister = document.getElementById('form-register');
+
+  tabLogin.addEventListener('click', () => {
+    tabLogin.className = 'flex-1 py-2 text-xs font-semibold rounded-lg transition bg-brand-600 text-white shadow';
+    tabRegister.className = 'flex-1 py-2 text-xs font-semibold text-slate-400 hover:text-white rounded-lg transition';
+    formLogin.classList.remove('hidden');
+    formRegister.classList.add('hidden');
+    clearAuthBanners();
+  });
+
+  tabRegister.addEventListener('click', () => {
+    tabRegister.className = 'flex-1 py-2 text-xs font-semibold rounded-lg transition bg-brand-600 text-white shadow';
+    tabLogin.className = 'flex-1 py-2 text-xs font-semibold text-slate-400 hover:text-white rounded-lg transition';
+    formRegister.classList.remove('hidden');
+    formLogin.classList.add('hidden');
+    clearAuthBanners();
+  });
+
+  // Login Submit
+  formLogin.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearAuthBanners();
+    const identifier = document.getElementById('login-identifier').value.trim();
+    const password = document.getElementById('login-password').value;
+
+    const btn = document.getElementById('btn-login-submit');
+    btn.disabled = true;
+    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Authenticating...`;
+
+    try {
+      const res = await apiRequest(`${CORE_API_URL}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier, password })
+      });
+
+      if (res.ok) {
+        const data = res.data;
+        const token = data.access_token || data.token || data.accessToken;
+        STATE.token = token;
+        STATE.user = data.user;
+        localStorage.setItem('pravah_jwt_token', token);
+        localStorage.setItem('pravah_user', JSON.stringify(data.user));
+
+        showToast(`Welcome back, ${data.user.username} (${data.user.role})!`, 'success');
+        showDashboardView();
+      } else {
+        const errorMsg = res.data?.message || `HTTP ${res.status}: Authentication failed`;
+        showAuthError(Array.isArray(errorMsg) ? errorMsg.join(', ') : errorMsg);
+      }
+    } catch (err) {
+      showAuthError(`Network error connecting to Core API: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<i data-lucide="log-in" class="w-4 h-4"></i> Authenticate & Open Dashboard`;
+      if (window.lucide) lucide.createIcons();
     }
+  });
+
+  // Register Submit
+  formRegister.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    clearAuthBanners();
+    const email = document.getElementById('reg-email').value.trim();
+    const username = document.getElementById('reg-username').value.trim();
+    const password = document.getElementById('reg-password').value;
+
+    const btn = document.getElementById('btn-register-submit');
+    btn.disabled = true;
+    btn.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Creating account...`;
+
+    try {
+      const regRes = await apiRequest(`${CORE_API_URL}/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, username, password })
+      });
+
+      if (regRes.ok) {
+        showToast('Account created successfully! Logging in...', 'success');
+        // Auto-login
+        const loginRes = await apiRequest(`${CORE_API_URL}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: username, password })
+        });
+
+        if (loginRes.ok) {
+          const data = loginRes.data;
+          const token = data.access_token || data.token || data.accessToken;
+          STATE.token = token;
+          STATE.user = data.user;
+          localStorage.setItem('pravah_jwt_token', token);
+          localStorage.setItem('pravah_user', JSON.stringify(data.user));
+          showDashboardView();
+        }
+      } else {
+        const errorMsg = regRes.data?.message || `HTTP ${regRes.status}: Registration failed`;
+        showAuthError(Array.isArray(errorMsg) ? errorMsg.join(', ') : errorMsg);
+      }
+    } catch (err) {
+      showAuthError(`Network error connecting to Core API: ${err.message}`);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `<i data-lucide="user-plus" class="w-4 h-4"></i> Create Account & Log In`;
+      if (window.lucide) lucide.createIcons();
+    }
+  });
+}
+
+function showAuthError(msg) {
+  const banner = document.getElementById('auth-error-banner');
+  const text = document.getElementById('auth-error-text');
+  if (banner && text) {
+    text.textContent = msg;
+    banner.classList.remove('hidden');
   }
 }
 
+function clearAuthBanners() {
+  const err = document.getElementById('auth-error-banner');
+  const suc = document.getElementById('auth-success-banner');
+  if (err) err.classList.add('hidden');
+  if (suc) suc.classList.add('hidden');
+}
+
+function handleLogout() {
+  STATE.token = '';
+  STATE.user = null;
+  localStorage.removeItem('pravah_jwt_token');
+  localStorage.removeItem('pravah_user');
+  showToast('Signed out successfully', 'info');
+  showAuthView();
+}
+
+async function testProfileMeRoute() {
+  const res = await apiRequest(`${CORE_API_URL}/auth/me`, {
+    method: 'GET',
+    headers: { 'Authorization': `Bearer ${STATE.token}` }
+  });
+
+  if (res.ok) {
+    showToast(`Profile Verified: User ID ${res.data.user?.id}`, 'success');
+  } else {
+    showToast(`Auth Verification Failed: HTTP ${res.status}`, 'error');
+  }
+}
+
+function copyTokenToClipboard() {
+  if (!STATE.token) return;
+  navigator.clipboard.writeText(STATE.token);
+  showToast('JWT Token copied to clipboard', 'success');
+}
+
 // ============================================================================
-// 2. CHUNKED UPLOAD & RESUMABLE INGESTION PIPELINE
+// 3. API REQUEST WRAPPER & LIVE DEVELOPER INSPECTOR
 // ============================================================================
-function initDropZone() {
+async function apiRequest(url, options = {}) {
+  const startTime = performance.now();
+  const method = options.method || 'GET';
+  let status = 0;
+  let responseData = null;
+  let errorMsg = null;
+
+  try {
+    const res = await fetch(url, options);
+    status = res.status;
+    const duration = Math.round(performance.now() - startTime);
+
+    const contentType = res.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      responseData = await res.json();
+    } else {
+      responseData = await res.text();
+    }
+
+    logApiRequest({
+      timestamp: new Date().toLocaleTimeString(),
+      method,
+      url,
+      status,
+      duration,
+      headers: Object.fromEntries(res.headers.entries()),
+      body: responseData
+    });
+
+    return {
+      ok: res.ok,
+      status: res.status,
+      headers: res.headers,
+      data: responseData
+    };
+  } catch (err) {
+    const duration = Math.round(performance.now() - startTime);
+    errorMsg = err.message;
+    logApiRequest({
+      timestamp: new Date().toLocaleTimeString(),
+      method,
+      url,
+      status: 'ERR',
+      duration,
+      headers: {},
+      body: { error: errorMsg }
+    });
+    throw err;
+  }
+}
+
+function setupDevInspector() {
+  const toggle = document.getElementById('dev-console-toggle');
+  const drawer = document.getElementById('dev-console-drawer');
+  const icon = document.getElementById('dev-drawer-icon');
+  let open = false;
+
+  toggle.addEventListener('click', (e) => {
+    if (e.target.tagName === 'BUTTON') return;
+    open = !open;
+    if (open) {
+      drawer.classList.remove('translate-y-[calc(100%-38px)]');
+      icon.classList.add('rotate-180');
+    } else {
+      drawer.classList.add('translate-y-[calc(100%-38px)]');
+      icon.classList.remove('rotate-180');
+    }
+  });
+}
+
+function logApiRequest(log) {
+  STATE.devLogs.unshift(log);
+  if (STATE.devLogs.length > 50) STATE.devLogs.pop();
+
+  const badge = document.getElementById('dev-logs-badge');
+  if (badge) badge.textContent = `${STATE.devLogs.length} requests`;
+
+  const container = document.getElementById('dev-logs-container');
+  if (!container) return;
+
+  const statusColor = log.status >= 200 && log.status < 300 ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' :
+                      log.status === 206 ? 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20' :
+                      log.status >= 400 ? 'text-rose-400 bg-rose-500/10 border-rose-500/20' : 'text-slate-400 bg-dark-850';
+
+  const logRow = document.createElement('div');
+  logRow.className = 'p-2.5 rounded-lg bg-dark-950 border border-white/5 space-y-1 hover:border-white/10 transition';
+  logRow.innerHTML = `
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${statusColor} border">${log.status}</span>
+        <span class="font-bold text-slate-300 uppercase">${log.method}</span>
+        <span class="text-slate-400 truncate max-w-md">${log.url}</span>
+      </div>
+      <div class="flex items-center gap-2 text-slate-500 text-[10px]">
+        <span>${log.duration}ms</span>
+        <span>${log.timestamp}</span>
+      </div>
+    </div>
+    <details class="text-[10px] text-slate-400">
+      <summary class="cursor-pointer hover:text-slate-200">Response Payload</summary>
+      <pre class="mt-1 p-2 rounded bg-dark-900 border border-white/5 text-slate-300 overflow-x-auto max-h-32">${typeof log.body === 'object' ? JSON.stringify(log.body, null, 2) : log.body}</pre>
+    </details>
+  `;
+
+  if (container.children.length === 1 && container.children[0].textContent.includes('No HTTP requests')) {
+    container.innerHTML = '';
+  }
+  container.prepend(logRow);
+}
+
+function clearDevLogs(e) {
+  if (e) e.stopPropagation();
+  STATE.devLogs = [];
+  const container = document.getElementById('dev-logs-container');
+  if (container) container.innerHTML = '<div class="text-center text-slate-600 py-8 font-sans text-xs">No HTTP requests captured yet.</div>';
+  const badge = document.getElementById('dev-logs-badge');
+  if (badge) badge.textContent = `0 requests`;
+}
+
+// ============================================================================
+// 4. CHUNKED INGESTION & SMART RESUMABLE UPLOAD
+// ============================================================================
+function setupUploadListeners() {
   const dropZone = document.getElementById('drop-zone');
   const fileInput = document.getElementById('file-input');
-  const btnStartUpload = document.getElementById('btn-start-upload');
-
-  if (!dropZone || !fileInput || !btnStartUpload) return;
+  const btnStart = document.getElementById('btn-start-upload');
+  const btnPause = document.getElementById('btn-pause-upload');
+  const btnSimDrop = document.getElementById('btn-sim-interrupt');
 
   dropZone.addEventListener('click', () => fileInput.click());
-  
-  dropZone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    dropZone.classList.add('border-brand-500', 'bg-dark-850');
-  });
-
-  dropZone.addEventListener('dragleave', () => {
-    dropZone.classList.remove('border-brand-500', 'bg-dark-850');
-  });
-
+  dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('border-brand-500'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-brand-500'));
   dropZone.addEventListener('drop', (e) => {
     e.preventDefault();
-    dropZone.classList.remove('border-brand-500', 'bg-dark-850');
-    if (e.dataTransfer.files.length > 0) {
-      handleFileSelected(e.dataTransfer.files[0]);
-    }
+    dropZone.classList.remove('border-brand-500');
+    if (e.dataTransfer.files.length) handleFileSelect(e.dataTransfer.files[0]);
   });
 
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files.length > 0) {
-      handleFileSelected(fileInput.files[0]);
-    }
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length) handleFileSelect(e.target.files[0]);
   });
 
-  btnStartUpload.addEventListener('click', startChunkedUpload);
-  document.getElementById('btn-refresh-files')?.addEventListener('click', fetchExistingFiles);
+  btnStart.addEventListener('click', () => startChunkedUpload());
+  btnPause.addEventListener('click', () => togglePauseUpload());
+  btnSimDrop.addEventListener('click', () => simulateUploadDropout());
 }
 
-function handleFileSelected(file) {
-  STATE.activeUploadFile = file;
-  const btn = document.getElementById('btn-start-upload');
-  if (btn) {
-    btn.disabled = false;
-    btn.querySelector('span').textContent = `Upload "${file.name}" (${formatBytes(file.size)})`;
-  }
-  
-  const savedSessionRaw = localStorage.getItem('pravah_active_upload');
-  let isResume = false;
-  if (savedSessionRaw) {
-    try {
-      const saved = JSON.parse(savedSessionRaw);
-      if (saved.fileName === file.name && saved.fileSize === file.size) {
-        isResume = true;
-      }
-    } catch {}
-  }
+async function handleFileSelect(file) {
+  STATE.selectedFile = file;
+  const chunkSize = parseInt(document.getElementById('upload-chunk-size').value, 10);
+  const totalChunks = Math.ceil(file.size / chunkSize);
 
-  const progCard = document.getElementById('upload-progress-card');
-  if (progCard) progCard.classList.remove('hidden');
-  const fileNameEl = document.getElementById('upload-file-name');
-  if (fileNameEl) fileNameEl.textContent = isResume ? `${file.name} (Resumable Session Found)` : file.name;
-  const percentEl = document.getElementById('upload-progress-percent');
-  if (percentEl) percentEl.textContent = '0%';
-  const barEl = document.getElementById('upload-progress-bar');
-  if (barEl) barEl.style.width = '0%';
-  const countEl = document.getElementById('upload-chunk-count');
-  if (countEl) countEl.textContent = `Ready: ${Math.ceil(file.size / STATE.CHUNK_SIZE)} chunks`;
-  if (window.lucide) lucide.createIcons();
+  document.getElementById('selected-file-card').classList.remove('hidden');
+  document.getElementById('sel-file-name').textContent = file.name;
+  document.getElementById('sel-file-size').textContent = formatBytes(file.size);
+  document.getElementById('sel-file-chunks').textContent = totalChunks;
+  document.getElementById('sel-file-mime').textContent = file.type || 'application/octet-stream';
+
+  const btnStart = document.getElementById('btn-start-upload');
+  btnStart.disabled = false;
+
+  // Check if there is an active session in localStorage for this file name + size
+  const resumeBadge = document.getElementById('resumable-detected-badge');
+  if (STATE.activeUpload && STATE.activeUpload.name === file.name && STATE.activeUpload.totalSize === file.size) {
+    try {
+      const res = await apiRequest(`${CORE_API_URL}/upload/status/${STATE.activeUpload.fileId}`, {
+        headers: { 'Authorization': `Bearer ${STATE.token}` }
+      });
+      const verifiedList = Array.isArray(res.data?.verifiedChunks) ? res.data.verifiedChunks : [];
+      if (res.ok && verifiedList.length > 0) {
+        resumeBadge.classList.remove('hidden');
+        resumeBadge.innerHTML = `<i data-lucide="check" class="w-3 h-3 text-emerald-400"></i> Resumable session active! ${verifiedList.length}/${totalChunks} chunks verified on server.`;
+        if (window.lucide) lucide.createIcons();
+      } else {
+        resumeBadge.classList.add('hidden');
+      }
+    } catch {
+      resumeBadge.classList.add('hidden');
+    }
+  } else {
+    resumeBadge.classList.add('hidden');
+  }
 }
 
 async function startChunkedUpload() {
-  const file = STATE.activeUploadFile;
-  if (!file) return;
+  if (!STATE.selectedFile) return;
+  const file = STATE.selectedFile;
+  const chunkSize = parseInt(document.getElementById('upload-chunk-size').value, 10);
+  const totalChunks = Math.ceil(file.size / chunkSize);
 
-  if (!STATE.token) {
-    await switchRole('ADMIN');
+  STATE.isUploading = true;
+  STATE.isPaused = false;
+  STATE.abortController = new AbortController();
+
+  document.getElementById('btn-start-upload').classList.add('hidden');
+  document.getElementById('upload-controls').classList.remove('hidden');
+  document.getElementById('upload-progress-card').classList.remove('hidden');
+
+  // Initialize Chunk Status Matrix in DOM
+  const chunkGrid = document.getElementById('chunk-grid');
+  chunkGrid.innerHTML = '';
+  for (let i = 0; i < totalChunks; i++) {
+    const chunkDot = document.createElement('div');
+    chunkDot.id = `chunk-dot-${i}`;
+    chunkDot.className = 'w-4 h-4 rounded bg-dark-800 border border-white/5 flex items-center justify-center text-[9px] font-mono text-slate-500';
+    chunkDot.textContent = i + 1;
+    chunkGrid.appendChild(chunkDot);
   }
 
-  const btn = document.getElementById('btn-start-upload');
-  if (btn) {
-    btn.disabled = true;
-    btn.querySelector('span').textContent = 'Ingesting Chunks...';
-  }
+  let fileId = STATE.activeUpload?.fileId;
+  let verifiedChunks = [];
 
   try {
-    const totalChunks = Math.ceil(file.size / STATE.CHUNK_SIZE);
-    const mimeType = file.type || 'application/octet-stream';
-    const isVideo = file.type.startsWith('video/') || file.name.match(/\.(mp4|mkv|mov|webm)$/i);
-
-    let fileId = null;
-    let verifiedChunks = [];
-
-    const savedSessionRaw = localStorage.getItem('pravah_active_upload');
-    if (savedSessionRaw) {
-      try {
-        const saved = JSON.parse(savedSessionRaw);
-        if (saved.fileName === file.name && saved.fileSize === file.size && saved.fileId) {
-          const statusRes = await fetch(`${STATE.coreUrl}/upload/status/${saved.fileId}`, {
-            headers: { 'Authorization': `Bearer ${STATE.token}` }
-          });
-          if (statusRes.ok) {
-            const statusData = await statusRes.json();
-            fileId = saved.fileId;
-            verifiedChunks = statusData.verifiedChunks || [];
-            showToast(`Resuming upload for "${file.name}" (${verifiedChunks.length}/${totalChunks} already verified)`, 'info');
-          }
-        }
-      } catch (e) {
-        console.warn('Could not resume previous session', e);
+    // 1. Check existing upload status or Initialize new session
+    if (fileId && STATE.activeUpload?.name === file.name && STATE.activeUpload?.totalSize === file.size) {
+      const statusRes = await apiRequest(`${CORE_API_URL}/upload/status/${fileId}`, {
+        headers: { 'Authorization': `Bearer ${STATE.token}` }
+      });
+      if (statusRes.ok) {
+        verifiedChunks = Array.isArray(statusRes.data?.verifiedChunks) 
+          ? statusRes.data.verifiedChunks 
+          : (Array.isArray(statusRes.data?.uploadedChunks) ? statusRes.data.uploadedChunks : []);
       }
     }
 
-    if (!fileId) {
-      const initRes = await fetch(`${STATE.coreUrl}/upload/init`, {
+    if (!fileId || verifiedChunks.length === 0) {
+      const initRes = await apiRequest(`${CORE_API_URL}/upload/init`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -373,88 +505,87 @@ async function startChunkedUpload() {
         },
         body: JSON.stringify({
           name: file.name,
+          mimeType: file.type || 'application/octet-stream',
           totalSize: file.size,
-          mimeType: mimeType,
-          totalChunks: totalChunks
+          totalChunks
         })
       });
 
       if (!initRes.ok) {
-        const errBody = await initRes.text();
-        throw new Error(`Init failed (${initRes.status}): ${errBody}`);
+        throw new Error(initRes.data?.message || `Init upload failed with status ${initRes.status}`);
       }
-      const initData = await initRes.json();
-      fileId = initData.fileId;
 
-      localStorage.setItem('pravah_active_upload', JSON.stringify({
-        fileId: fileId,
-        fileName: file.name,
-        fileSize: file.size,
-        totalChunks: totalChunks
-      }));
+      fileId = initRes.data.fileId;
+      STATE.activeUpload = { fileId, name: file.name, totalSize: file.size, totalChunks, chunkSize };
+      localStorage.setItem('pravah_active_upload', JSON.stringify(STATE.activeUpload));
     }
 
-    const startTime = Date.now();
+    // Mark already uploaded chunks as verified
+    verifiedChunks.forEach(idx => {
+      const dot = document.getElementById(`chunk-dot-${idx}`);
+      if (dot) dot.className = 'w-4 h-4 rounded bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 flex items-center justify-center text-[9px] font-mono font-bold';
+    });
+
+    // 2. Upload missing chunks sequentially with retry
     for (let i = 0; i < totalChunks; i++) {
-      if (verifiedChunks.includes(i)) {
-        const percent = Math.round(((i + 1) / totalChunks) * 100);
-        document.getElementById('upload-progress-percent').textContent = `${percent}%`;
-        document.getElementById('upload-progress-bar').style.width = `${percent}%`;
-        document.getElementById('upload-chunk-count').textContent = `Chunk ${i + 1} / ${totalChunks} (Verified)`;
-        continue;
+      if (verifiedChunks.includes(i)) continue;
+
+      while (STATE.isPaused) {
+        await new Promise(r => setTimeout(r, 500));
       }
 
-      const start = i * STATE.CHUNK_SIZE;
-      const end = Math.min(start + STATE.CHUNK_SIZE, file.size);
+      if (!STATE.isUploading) break;
+
+      const dot = document.getElementById(`chunk-dot-${i}`);
+      if (dot) dot.className = 'w-4 h-4 rounded bg-brand-500/30 border border-brand-500/50 text-white flex items-center justify-center text-[9px] font-mono animate-pulse';
+
+      const start = i * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
       const chunkBlob = file.slice(start, end);
-      const chunkBuffer = await chunkBlob.arrayBuffer();
-      const chunkChecksum = await computeSha256(chunkBuffer);
+      const arrayBuffer = await chunkBlob.arrayBuffer();
+      const checksum = sha256(arrayBuffer);
 
-      let uploadSuccess = false;
-      let lastError = null;
+      const formData = new FormData();
+      formData.append('file', chunkBlob, `chunk-${i}`);
+      formData.append('checksum', checksum);
 
-      for (let attempt = 1; attempt <= 3; attempt++) {
+      let chunkUploaded = false;
+      let attempts = 0;
+
+      while (!chunkUploaded && attempts < 3) {
         try {
-          const formData = new FormData();
-          formData.append('checksum', chunkChecksum);
-          formData.append('file', chunkBlob, file.name);
-
-          const chunkRes = await fetch(`${STATE.coreUrl}/upload/${fileId}/chunk/${i}`, {
+          attempts++;
+          const uploadRes = await fetch(`${CORE_API_URL}/upload/${fileId}/chunk/${i}`, {
             method: 'PUT',
-            headers: {
-              'Authorization': `Bearer ${STATE.token}`
-            },
-            body: formData
+            headers: { 'Authorization': `Bearer ${STATE.token}` },
+            body: formData,
+            signal: STATE.abortController.signal
           });
 
-          if (chunkRes.ok) {
-            uploadSuccess = true;
-            break;
+          if (uploadRes.ok) {
+            chunkUploaded = true;
+            verifiedChunks.push(i);
+            if (dot) dot.className = 'w-4 h-4 rounded bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 flex items-center justify-center text-[9px] font-mono font-bold';
+            
+            const pct = Math.round((verifiedChunks.length / totalChunks) * 100);
+            document.getElementById('upload-progress-bar').style.width = `${pct}%`;
+            document.getElementById('upload-pct-text').textContent = `${pct}%`;
+            document.getElementById('upload-status-text').textContent = `Uploaded chunk ${i + 1}/${totalChunks}`;
           } else {
-            const chunkErr = await chunkRes.text();
-            lastError = new Error(`Chunk ${i} upload failed (${chunkRes.status}): ${chunkErr}`);
+            const errJson = await uploadRes.json().catch(() => ({}));
+            throw new Error(errJson.message || `HTTP ${uploadRes.status}`);
           }
-        } catch (netErr) {
-          lastError = netErr;
+        } catch (err) {
+          if (err.name === 'AbortError') throw err;
+          if (attempts >= 3) throw new Error(`Chunk ${i} failed after 3 attempts: ${err.message}`);
           await new Promise(r => setTimeout(r, 1000));
         }
       }
-
-      if (!uploadSuccess) {
-        throw lastError || new Error(`Chunk ${i} upload failed after 3 attempts`);
-      }
-
-      const percent = Math.round(((i + 1) / totalChunks) * 100);
-      document.getElementById('upload-progress-percent').textContent = `${percent}%`;
-      document.getElementById('upload-progress-bar').style.width = `${percent}%`;
-      document.getElementById('upload-chunk-count').textContent = `Chunk ${i + 1} / ${totalChunks}`;
-      
-      const elapsedSec = (Date.now() - startTime) / 1000;
-      const speedMBps = (((i + 1) * STATE.CHUNK_SIZE) / (1024 * 1024) / Math.max(elapsedSec, 0.1)).toFixed(1);
-      document.getElementById('upload-speed').textContent = `${speedMBps} MB/s`;
     }
 
-    const compRes = await fetch(`${STATE.coreUrl}/upload/complete`, {
+    // 3. Complete Upload & trigger Transcoding + Kafka replication
+    document.getElementById('upload-status-text').textContent = 'Assembling chunks & triggering pipeline...';
+    const completeRes = await apiRequest(`${CORE_API_URL}/upload/complete`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -463,302 +594,694 @@ async function startChunkedUpload() {
       body: JSON.stringify({ fileId })
     });
 
-    if (!compRes.ok) throw new Error('Complete assembly failed');
-    
+    if (!completeRes.ok) {
+      throw new Error(completeRes.data?.message || 'Failed to assemble file');
+    }
+
+    showToast(`Upload complete! File stored & transcode queued.`, 'success');
     localStorage.removeItem('pravah_active_upload');
-    showToast(`Upload completed: ${file.name}`, 'success');
+    STATE.activeUpload = null;
+    resetUploadUI();
+    refreshFilesList();
 
-    const fileRecord = {
-      fileId,
-      fileName: file.name,
-      size: file.size,
-      isVideo: isVideo,
-      uploadedAt: new Date().toLocaleTimeString(),
-      status: isVideo ? 'TRANSCODING' : 'COMPLETED'
-    };
-    STATE.uploadedFiles.unshift(fileRecord);
-    renderFilesList();
-
-    if (isVideo) {
-      pollTranscodingStatus(fileId);
-    }
-
-    if (btn) {
-      btn.disabled = false;
-      btn.querySelector('span').textContent = 'Upload Completed!';
-    }
-    await fetchExistingFiles();
+    // Auto-select in streaming and download tabs
+    setTargetFileId(fileId);
   } catch (err) {
-    showToast(`Upload Error: ${err.message}`, 'error');
-    if (btn) {
-      btn.disabled = false;
-      btn.querySelector('span').textContent = 'Resume / Retry Upload';
+    if (err.name === 'AbortError') {
+      showToast('Upload disconnected. You can resume at any time.', 'info');
+    } else {
+      showToast(`Upload error: ${err.message}`, 'error');
+      document.getElementById('upload-status-text').textContent = `Failed: ${err.message}`;
     }
   }
 }
 
-async function fetchExistingFiles() {
-  if (!STATE.token) return;
+function togglePauseUpload() {
+  STATE.isPaused = !STATE.isPaused;
+  const btn = document.getElementById('btn-pause-upload');
+  if (STATE.isPaused) {
+    btn.innerHTML = `<i data-lucide="play" class="w-3.5 h-3.5"></i> Resume`;
+    document.getElementById('upload-status-text').textContent = 'Upload paused';
+  } else {
+    btn.innerHTML = `<i data-lucide="pause" class="w-3.5 h-3.5"></i> Pause`;
+    document.getElementById('upload-status-text').textContent = 'Resuming upload...';
+  }
+  if (window.lucide) lucide.createIcons();
+}
+
+function simulateUploadDropout() {
+  if (STATE.abortController) {
+    STATE.abortController.abort();
+    STATE.isUploading = false;
+    resetUploadUI();
+  }
+}
+
+function resetUploadUI() {
+  STATE.isUploading = false;
+  STATE.isPaused = false;
+  const btnStart = document.getElementById('btn-start-upload');
+  btnStart.classList.remove('hidden');
+  btnStart.disabled = false;
+  document.getElementById('upload-controls').classList.add('hidden');
+}
+
+// ============================================================================
+// 5. FILES CATALOG & ACTIONS TABLE
+// ============================================================================
+async function refreshFilesList() {
   try {
-    const res = await fetch(`${STATE.coreUrl}/metadata/files?limit=50`, {
-      headers: { 'Authorization': `Bearer ${STATE.token}` }
+    const res = await apiRequest(`${CORE_API_URL}/metadata/files`, {
+      headers: STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {}
     });
+
     if (res.ok) {
-      const result = await res.json();
-      if (result.data && Array.isArray(result.data)) {
-        STATE.uploadedFiles = result.data.map(f => ({
-          fileId: f.id,
-          fileName: f.name,
-          size: parseInt(f.totalSize || f.size || '0', 10),
-          isVideo: f.mimeType?.startsWith('video/') || f.name?.match(/\.(mp4|mkv|mov|webm)$/i),
-          uploadedAt: new Date(f.createdAt).toLocaleTimeString(),
-          status: f.status
-        }));
-        renderFilesList();
-      }
+      const files = res.data?.data || res.data?.files || (Array.isArray(res.data) ? res.data : []);
+      STATE.filesList = files;
+      renderFilesTable(files);
+      populateMediaDropdowns(files);
     }
-  } catch (e) {
-    console.error('Failed to fetch existing files', e);
+  } catch (err) {
+    console.error('Failed to load files:', err);
   }
 }
 
-function renderFilesList() {
-  const container = document.getElementById('file-list-container');
-  if (!container) return;
+function populateMediaDropdowns(files) {
+  const streamSelector = document.getElementById('stream-video-selector');
+  const dlSelector = document.getElementById('dl-file-selector');
 
-  if (STATE.uploadedFiles.length === 0) {
-    container.innerHTML = `
-      <div class="py-12 flex flex-col items-center justify-center text-center gap-2 text-slate-500">
-        <i data-lucide="inbox" class="w-8 h-8 stroke-1"></i>
-        <p class="text-xs">No files uploaded yet in this session</p>
-      </div>`;
+  if (streamSelector && Array.isArray(files)) {
+    const currentVal = streamSelector.value;
+    streamSelector.innerHTML = '<option value="">-- Choose a video to stream --</option>' +
+      files.map(f => `<option value="${f.id}" ${f.id === currentVal ? 'selected' : ''}>${f.name} (${formatBytes(f.totalSize)}) [${f.status}]</option>`).join('');
+  }
+
+  if (dlSelector && Array.isArray(files)) {
+    const currentDl = dlSelector.value;
+    dlSelector.innerHTML = '<option value="">-- Choose from uploaded catalog --</option>' +
+      files.map(f => `<option value="${f.id}" ${f.id === currentDl ? 'selected' : ''}>${f.name} (${formatBytes(f.totalSize)}) [${f.status}]</option>`).join('');
+  }
+}
+
+function onStreamVideoSelected(fileId) {
+  if (!fileId) return;
+  playHlsStream(fileId);
+}
+
+function onDownloadFileSelected(fileId) {
+  if (!fileId) return;
+  setTargetFileId(fileId);
+}
+
+function renderFilesTable(files) {
+  const tbody = document.getElementById('files-table-body');
+  const countLabel = document.getElementById('files-count-label');
+  if (!tbody) return;
+
+  if (countLabel) countLabel.textContent = `Total Files: ${files.length}`;
+
+  if (!files || files.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="5" class="p-8 text-center text-slate-500 font-sans">
+          <i data-lucide="folder-open" class="w-8 h-8 text-slate-600 mx-auto mb-2"></i>
+          <p class="text-xs">No files uploaded yet.</p>
+        </td>
+      </tr>`;
     if (window.lucide) lucide.createIcons();
     return;
   }
 
-  container.innerHTML = STATE.uploadedFiles.map(f => `
-    <div class="glass-card rounded-xl p-3 flex items-center justify-between gap-3 hover:border-brand-500/30 transition group">
-      <div class="flex items-center gap-2.5 overflow-hidden">
-        <div class="w-8 h-8 rounded-lg bg-dark-800 border border-white/5 flex items-center justify-center text-slate-300 shrink-0">
-          <i data-lucide="${f.isVideo ? 'film' : 'file'}" class="w-4 h-4"></i>
-        </div>
-        <div class="overflow-hidden">
-          <p class="text-xs font-medium text-slate-200 truncate">${f.fileName}</p>
-          <div class="flex items-center gap-2 text-[10px] font-mono text-slate-500">
-            <span>${formatBytes(f.size)}</span>
-            <span>•</span>
-            <span class="text-brand-400 font-semibold uppercase">${f.status}</span>
+  tbody.innerHTML = files.map(f => {
+    const statusBg = f.status === 'COMPLETED' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                     f.status === 'UPLOADING' ? 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20' : 'bg-dark-800 text-slate-400';
+
+    return `
+      <tr class="hover:bg-dark-850/50 transition">
+        <td class="p-3">
+          <div class="font-bold text-slate-200 font-sans truncate max-w-[200px]">${f.name}</div>
+          <div class="text-[10px] text-slate-500 font-mono">${f.id}</div>
+        </td>
+        <td class="p-3 text-slate-300 font-mono">${formatBytes(f.totalSize)}</td>
+        <td class="p-3">
+          <span class="px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full ${statusBg} border">${f.status}</span>
+        </td>
+        <td class="p-3 text-slate-400">${new Date(f.createdAt).toLocaleDateString()}</td>
+        <td class="p-3 text-right">
+          <div class="flex items-center justify-end gap-1.5 font-sans">
+            <button onclick="playHlsStream('${f.id}')" class="px-2 py-1 rounded bg-brand-600/20 hover:bg-brand-600 text-brand-300 hover:text-white text-[11px] font-semibold transition flex items-center gap-1">
+              <i data-lucide="play" class="w-3 h-3"></i> Stream
+            </button>
+            <button onclick="openRangeTester('${f.id}')" class="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-white text-[11px] font-semibold transition flex items-center gap-1">
+              <i data-lucide="download" class="w-3 h-3"></i> Range 206
+            </button>
+            <button onclick="triggerPurgeModal('${f.id}')" class="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-white text-[11px] font-semibold transition flex items-center gap-1" title="Evict from Edge RAM & Invalidate Kafka">
+              <i data-lucide="refresh-cw" class="w-3 h-3"></i> Purge
+            </button>
+            <button onclick="deleteFileRecord('${f.id}')" class="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white text-[11px] font-semibold transition flex items-center gap-1" title="Permanently delete from MinIO and Database">
+              <i data-lucide="trash-2" class="w-3 h-3"></i> Delete
+            </button>
           </div>
-        </div>
-      </div>
-      <div class="flex items-center gap-1.5 shrink-0">
-        ${f.isVideo ? `
-          <button onclick="playHlsStream('${f.fileId}')" class="px-2.5 py-1 rounded-lg bg-brand-600/20 hover:bg-brand-600 text-brand-300 hover:text-white text-[11px] font-medium transition flex items-center gap-1">
-            <i data-lucide="play" class="w-3 h-3 fill-current"></i>
-            <span>Stream</span>
-          </button>` : ''
-        }
-        <button onclick="testRangeDownload('${f.fileId}', '${f.fileName}')" class="px-2 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-[11px] font-medium transition flex items-center gap-1" title="Test HTTP 206 Partial Content Range Download">
-          <i data-lucide="download" class="w-3 h-3"></i>
-          <span>Range 206</span>
-        </button>
-        <button onclick="purgeFileCache('${f.fileId}')" class="px-2 py-1 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-[11px] font-medium transition" title="Purge Cache Across All Edge Nodes">
-          Purge
-        </button>
-        <button onclick="setSimFileId('${f.fileId}')" class="px-2 py-1 rounded-lg bg-dark-800 hover:bg-dark-750 text-slate-300 text-[11px] font-medium transition">
-          Route
-        </button>
-      </div>
-    </div>
-  `).join('');
+        </td>
+      </tr>
+    `;
+  }).join('');
+
   if (window.lucide) lucide.createIcons();
 }
 
-// ============================================================================
-// 3. ADAPTIVE HLS VIDEO STREAMING & MULTI-RENDITION STEPPER
-// ============================================================================
-function playHlsStream(fileId) {
-  STATE.activeVideoId = fileId;
-  const video = document.getElementById('hls-video-player');
-  const placeholder = document.getElementById('video-placeholder');
-  const streamUrl = `${STATE.edgeUrl}/edge/content/${fileId}/hls/master.m3u8`;
+async function deleteFileRecord(fileId) {
+  if (!confirm(`Are you sure you want to permanently delete this file and all its data from MinIO and Database?`)) return;
+  try {
+    const res = await apiRequest(`${CORE_API_URL}/metadata/files/${fileId}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${STATE.token}` }
+    });
 
-  if (placeholder) placeholder.classList.add('hidden');
+    if (res.ok) {
+      showToast('File permanently deleted from MinIO S3 and PostgreSQL', 'success');
+      refreshFilesList();
+    } else {
+      showToast(`Delete failed: ${res.data?.message || res.status}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Delete error: ${err.message}`, 'error');
+  }
+}
+
+function setTargetFileId(fileId) {
+  const dlInput = document.getElementById('dl-file-id');
+  const dlSelect = document.getElementById('dl-file-selector');
+  const purgeInput = document.getElementById('purge-file-id');
+  const streamSelect = document.getElementById('stream-video-selector');
+  if (dlInput) dlInput.value = fileId;
+  if (dlSelect && fileId) dlSelect.value = fileId;
+  if (purgeInput) purgeInput.value = fileId;
+  if (streamSelect && fileId) streamSelect.value = fileId;
+  if (fileId) checkActiveDownloadSession(fileId);
+}
+
+function checkActiveDownloadSession(fileId) {
+  const card = document.getElementById('resumable-dl-card');
+  const bar = document.getElementById('resumable-dl-bar');
+  const text = document.getElementById('resumable-dl-bytes');
+  const title = document.getElementById('resumable-dl-status-title');
+  if (!card || !fileId) return;
+
+  const saved = JSON.parse(localStorage.getItem('pravah_active_download') || 'null');
+  if (saved && saved.fileId === fileId && saved.downloadedBytes > 0 && saved.downloadedBytes < (saved.totalBytes || Infinity)) {
+    card.classList.remove('hidden');
+    const pct = Math.min(100, Math.round((saved.downloadedBytes / (saved.totalBytes || 1)) * 100));
+    if (bar) bar.style.width = `${pct}%`;
+    if (text) text.textContent = `${formatBytes(saved.downloadedBytes)} / ${formatBytes(saved.totalBytes)} (${pct}%)`;
+    if (title) title.textContent = 'Paused Session Restored (Click Resume):';
+    showToast(`In-progress download found at ${formatBytes(saved.downloadedBytes)} (${pct}%). Click Resume to continue!`, 'info');
+  }
+}
+
+function openRangeTester(fileId) {
+  setTargetFileId(fileId);
+  const tab = document.querySelector('[data-tab="tab-download"]');
+  if (tab) tab.click();
+}
+
+function triggerPurgeModal(fileId) {
+  setTargetFileId(fileId);
+  const tab = document.querySelector('[data-tab="tab-cache"]');
+  if (tab) tab.click();
+}
+
+// ============================================================================
+// 6. DOWNLOAD LAB & RFC 7233 BYTE-RANGE 206 DIAGNOSTICS
+// ============================================================================
+async function executeRangeDownloadTest() {
+  const fileId = document.getElementById('dl-file-id').value.trim();
+  if (!fileId) {
+    showToast('Please enter or select a File ID', 'error');
+    return;
+  }
+
+  const preset = document.getElementById('dl-range-preset').value;
+  const custom = document.getElementById('dl-custom-range').value.trim();
+  const region = document.getElementById('dl-client-region').value;
+
+  let rangeHeader = '';
+  if (preset === 'CUSTOM') rangeHeader = custom;
+  else if (preset !== 'FULL') rangeHeader = `bytes=${preset}`;
+
+  const headers = {
+    'X-Test-Client-Region': region,
+    ...(STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {})
+  };
+
+  if (rangeHeader) headers['Range'] = rangeHeader;
+
+  const startTime = performance.now();
+  const badge = document.getElementById('dl-status-badge');
+  badge.textContent = 'Executing...';
+  badge.className = 'px-2.5 py-1 text-xs font-mono font-bold uppercase rounded-full bg-dark-900 text-slate-400 border border-white/5';
+
+  try {
+    const res = await fetch(`${CORE_API_URL}/download/${fileId}`, { headers });
+    const duration = Math.round(performance.now() - startTime);
+
+    document.getElementById('diag-http-status').textContent = `${res.status} ${res.statusText}`;
+    document.getElementById('diag-edge-name').textContent = res.headers.get('x-cdn-edge') || 'Origin Core';
+    document.getElementById('diag-latency').textContent = `${duration} ms`;
+
+    const cacheState = res.headers.get('x-cache') || (res.status === 206 ? 'HIT (Edge RAM)' : 'MISS');
+    document.getElementById('diag-cache-state').textContent = cacheState;
+
+    // Headers Box
+    const headerLines = [];
+    res.headers.forEach((v, k) => headerLines.push(`${k}: ${v}`));
+    document.getElementById('diag-headers-box').textContent = headerLines.join('\n');
+
+    const is206 = res.status === 206;
+    badge.textContent = is206 ? 'HTTP 206 Partial Content (PASS)' : `HTTP ${res.status}`;
+    badge.className = is206 ? 'px-2.5 py-1 text-xs font-mono font-bold uppercase rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                              'px-2.5 py-1 text-xs font-mono font-bold uppercase rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30';
+
+    logApiRequest({
+      timestamp: new Date().toLocaleTimeString(),
+      method: 'GET',
+      url: `${CORE_API_URL}/download/${fileId}`,
+      status: res.status,
+      duration,
+      headers: Object.fromEntries(res.headers.entries()),
+      body: `[Binary Stream Delivered - Content-Length: ${res.headers.get('content-length') || 'Unknown'}]`
+    });
+
+    showToast(is206 ? `RFC 7233 Range Verified (${duration}ms)` : `Download response: HTTP ${res.status}`, 'success');
+  } catch (err) {
+    badge.textContent = 'Error';
+    badge.className = 'px-2.5 py-1 text-xs font-mono font-bold uppercase rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/30';
+    showToast(`Range test failed: ${err.message}`, 'error');
+  }
+}
+
+async function generatePresignedUrl() {
+  const fileId = document.getElementById('dl-file-id').value.trim();
+  if (!fileId) {
+    showToast('Please enter or select a File ID', 'error');
+    return;
+  }
+
+  try {
+    const res = await apiRequest(`${CORE_API_URL}/download/${fileId}/signed`, {
+      headers: { 'Authorization': `Bearer ${STATE.token}` }
+    });
+
+    if (res.ok) {
+      const card = document.getElementById('presigned-url-card');
+      const input = document.getElementById('presigned-url-val');
+      card.classList.remove('hidden');
+      input.value = res.data.signedUrl || res.data.url;
+      showToast('Presigned URL generated', 'success');
+    } else {
+      showToast(`Failed: ${res.data?.message || res.status}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Presigned URL error: ${err.message}`, 'error');
+  }
+}
+
+function copyPresignedUrl() {
+  const input = document.getElementById('presigned-url-val');
+  navigator.clipboard.writeText(input.value);
+  showToast('Presigned URL copied to clipboard', 'success');
+}
+
+// Resumable Browser Stream
+let streamAbort = null;
+let streamBytesDownloaded = 0;
+let streamTotalBytes = 0;
+
+async function startBrowserResumableDownload(isResuming = false) {
+  const fileId = document.getElementById('dl-file-id').value.trim();
+  if (!fileId) {
+    showToast('Please enter or select a File ID', 'error');
+    return;
+  }
+
+  const card = document.getElementById('resumable-dl-card');
+  const title = document.getElementById('resumable-dl-status-title');
+  if (card) card.classList.remove('hidden');
+  if (title) title.textContent = 'Resumable Stream:';
+
+  const saved = JSON.parse(localStorage.getItem('pravah_active_download') || 'null');
+  if (isResuming && saved && saved.fileId === fileId) {
+    streamBytesDownloaded = saved.downloadedBytes || 0;
+    streamTotalBytes = saved.totalBytes || 0;
+  } else if (!isResuming) {
+    streamBytesDownloaded = 0;
+    streamTotalBytes = 0;
+    localStorage.removeItem('pravah_active_download');
+  }
+
+  streamAbort = new AbortController();
+
+  try {
+    const res = await fetch(`${CORE_API_URL}/download/${fileId}`, {
+      headers: {
+        'Range': `bytes=${streamBytesDownloaded}-`,
+        ...(STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {})
+      },
+      signal: streamAbort.signal
+    });
+
+    if (!res.ok && res.status !== 206) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+
+    const contentRange = res.headers.get('content-range');
+    if (contentRange) {
+      const match = contentRange.match(/\/(\d+)/);
+      if (match) streamTotalBytes = parseInt(match[1], 10);
+    }
+    if (!streamTotalBytes) {
+      streamTotalBytes = (parseInt(res.headers.get('content-length'), 10) || 0) + streamBytesDownloaded;
+    }
+
+    const reader = res.body.getReader();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      streamBytesDownloaded += value.length;
+
+      const pct = Math.min(100, Math.round((streamBytesDownloaded / (streamTotalBytes || 1)) * 100));
+      document.getElementById('resumable-dl-bar').style.width = `${pct}%`;
+      document.getElementById('resumable-dl-bytes').textContent = `${formatBytes(streamBytesDownloaded)} / ${formatBytes(streamTotalBytes)} (${pct}%)`;
+
+      // Persist progress to localStorage on each chunk
+      localStorage.setItem('pravah_active_download', JSON.stringify({
+        fileId,
+        downloadedBytes: streamBytesDownloaded,
+        totalBytes: streamTotalBytes
+      }));
+    }
+
+    localStorage.removeItem('pravah_active_download');
+    if (title) title.textContent = 'Stream Completed (100%):';
+    showToast('Browser stream download complete (100%)!', 'success');
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      if (title) title.textContent = 'Paused (Session Saved in Storage):';
+      showToast(`Stream paused at ${formatBytes(streamBytesDownloaded)}. Refresh the page to test resumption!`, 'info');
+    } else {
+      showToast(`Stream error: ${err.message}`, 'error');
+    }
+  }
+}
+
+function pauseBrowserStream() {
+  if (streamAbort) {
+    streamAbort.abort();
+  }
+}
+
+function resumeBrowserStream() {
+  const fileId = document.getElementById('dl-file-id').value.trim();
+  const saved = JSON.parse(localStorage.getItem('pravah_active_download') || 'null');
+  if (saved && saved.fileId === fileId && saved.downloadedBytes > 0) {
+    startBrowserResumableDownload(true);
+  } else {
+    startBrowserResumableDownload(false);
+  }
+}
+
+function resetBrowserStream() {
+  if (streamAbort) streamAbort.abort();
+  localStorage.removeItem('pravah_active_download');
+  streamBytesDownloaded = 0;
+  streamTotalBytes = 0;
+  const card = document.getElementById('resumable-dl-card');
+  if (card) card.classList.add('hidden');
+  showToast('Download session reset', 'info');
+}
+
+document.getElementById('btn-pause-stream')?.addEventListener('click', () => pauseBrowserStream());
+document.getElementById('btn-resume-stream')?.addEventListener('click', () => resumeBrowserStream());
+document.getElementById('btn-reset-stream')?.addEventListener('click', () => resetBrowserStream());
+
+// ============================================================================
+// 7. HLS ADAPTIVE VIDEO STREAMING & BULLMQ PIPELINE STEPPER
+// ============================================================================
+async function playHlsStream(fileId) {
+  setTargetFileId(fileId);
+  const tab = document.querySelector('[data-tab="tab-streaming"]');
+  if (tab) tab.click();
+
+  const file = STATE.filesList?.find(f => f.id === fileId);
+  const streamSelector = document.getElementById('stream-video-selector');
+  if (streamSelector && fileId) streamSelector.value = fileId;
+
+  const banner = document.getElementById('active-video-banner');
+  const activeName = document.getElementById('active-video-name');
+  const activePath = document.getElementById('active-video-path');
+  const activeStatus = document.getElementById('active-video-status');
+
+  if (banner && file) {
+    banner.classList.remove('hidden');
+    if (activeName) activeName.textContent = file.name;
+    if (activePath) activePath.textContent = file.storagePath || `s3://pravah-origin/${file.id}`;
+    if (activeStatus) {
+      activeStatus.textContent = file.status;
+      activeStatus.className = file.status === 'COMPLETED' ? 'px-2 py-0.5 text-[9px] font-bold uppercase rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'px-2 py-0.5 text-[9px] font-bold uppercase rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30';
+    }
+  }
+
+  const video = document.getElementById('hls-video');
+  const emptyState = document.getElementById('video-empty-state');
+  if (emptyState) emptyState.classList.add('hidden');
+
+  // HLS Master Playlist URL directly from Edge Node
+  const streamUrl = `${EDGE_URL}/edge/content/${fileId}/hls/master.m3u8?v=1`;
+
+  if (STATE.hlsPlayer) {
+    STATE.hlsPlayer.destroy();
+  }
 
   if (Hls.isSupported()) {
-    if (STATE.hlsPlayer) {
-      STATE.hlsPlayer.destroy();
-    }
     const hls = new Hls({
-      maxBufferLength: 30,
-      maxMaxBufferLength: 60,
+      enableWorker: true,
+      lowLatencyMode: true,
+      backBufferLength: 30
     });
+
+    STATE.hlsPlayer = hls;
     hls.loadSource(streamUrl);
     hls.attachMedia(video);
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+
+    hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
       video.play().catch(() => {});
-      updateQualitySelector(hls.levels);
-      showToast('Streaming master.m3u8 from Edge Node', 'success');
+      populateQualityLevels(data.levels);
+      showToast('Adaptive HLS Master Manifest Loaded', 'success');
     });
 
     hls.on(Hls.Events.LEVEL_SWITCHED, (_, data) => {
       const level = hls.levels[data.level];
       if (level) {
-        document.getElementById('player-resolution').textContent = `${level.height}p`;
-        document.getElementById('player-bitrate').textContent = `${Math.round(level.bitrate / 1000)} kbps`;
+        document.getElementById('hls-stat-rendition').textContent = `${level.height}p`;
+        document.getElementById('hls-stat-bitrate').textContent = `${Math.round(level.bitrate / 1000)} kbps`;
       }
     });
 
     hls.on(Hls.Events.ERROR, (_, data) => {
       if (data.fatal) {
-        console.warn('HLS stream fatal error:', data);
+        showToast(`HLS stream not ready yet (transcoding in progress)`, 'info');
       }
     });
 
-    STATE.hlsPlayer = hls;
+    // Update buffer stats
+    setInterval(() => {
+      if (video.buffered.length > 0) {
+        const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+        const bufferLen = Math.max(0, bufferedEnd - video.currentTime);
+        document.getElementById('hls-stat-buffer').textContent = `${bufferLen.toFixed(1)} s`;
+      }
+    }, 500);
+
   } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
     video.src = streamUrl;
-    video.play().catch(() => {});
+    video.play();
   }
 
-  setInterval(() => {
-    if (video.buffered && video.buffered.length > 0) {
-      const bufferedEnd = video.buffered.end(video.buffered.length - 1);
-      const bufferLen = Math.max(0, bufferedEnd - video.currentTime).toFixed(1);
-      const buffEl = document.getElementById('player-buffer');
-      if (buffEl) buffEl.textContent = `${bufferLen} s`;
-    }
-  }, 1000);
+  // Poll Transcoding Records
+  pollTranscodeStatus(fileId);
 }
 
-function updateQualitySelector(levels) {
-  const select = document.getElementById('hls-quality-select');
-  if (!select) return;
-  select.innerHTML = '<option value="-1">Auto (Adaptive)</option>';
-  levels.forEach((lvl, idx) => {
+function populateQualityLevels(levels) {
+  const selector = document.getElementById('hls-quality-selector');
+  selector.innerHTML = '<option value="-1" selected>Auto (Adaptive Bitrate)</option>';
+  levels.forEach((l, idx) => {
     const opt = document.createElement('option');
     opt.value = idx;
-    opt.textContent = `${lvl.height}p (${Math.round(lvl.bitrate / 1000)}k)`;
-    select.appendChild(opt);
+    opt.textContent = `${l.height}p (${Math.round(l.bitrate / 1000)} kbps)`;
+    selector.appendChild(opt);
   });
 
-  select.onchange = (e) => {
+  selector.onchange = () => {
     if (STATE.hlsPlayer) {
-      STATE.hlsPlayer.currentLevel = parseInt(e.target.value, 10);
+      STATE.hlsPlayer.currentLevel = parseInt(selector.value, 10);
     }
   };
 }
 
-async function pollTranscodingStatus(fileId) {
-  const pill = document.getElementById('transcode-status-pill');
-  if (pill) {
-    pill.textContent = 'PROCESSING';
-    pill.className = 'px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse';
-  }
+async function pollTranscodeStatus(targetFileId) {
+  const fileId = targetFileId || document.getElementById('dl-file-id')?.value;
+  if (!fileId) return;
 
-  const qualityMap = {
-    'Q_1080P': '1080p',
-    'Q_720P': '720p',
-    'Q_480P': '480p',
-    'Q_360P': '360p',
-    'Q_240P': '240p',
-    'Q_144P': '144p'
-  };
-
-  let pollCount = 0;
-  const interval = setInterval(async () => {
-    pollCount++;
-    try {
-      const res = await fetch(`${STATE.coreUrl}/admin/transcoding/status/${fileId}`, {
-        headers: STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {}
-      });
-      if (!res.ok) return;
-      const data = await res.json();
-      const records = data.transcodes || (Array.isArray(data) ? data : []);
-
-      if (records.length > 0) {
-        let allCompleted = true;
-        let anyProcessing = false;
-
-        records.forEach(t => {
-          const renditionKey = qualityMap[t.quality] || t.quality?.toLowerCase()?.replace('q_', '');
-          const step = document.getElementById(`step-${renditionKey}`);
-          if (step) {
-            step.classList.remove('opacity-40');
-            const ind = step.querySelector('.status-indicator');
-            if (t.status === 'COMPLETED') {
-              ind.className = 'status-indicator w-2 h-2 rounded-full bg-emerald-400';
-            } else if (t.status === 'PROCESSING') {
-              ind.className = 'status-indicator w-2 h-2 rounded-full bg-amber-400 animate-pulse';
-              allCompleted = false;
-              anyProcessing = true;
-            } else {
-              allCompleted = false;
-            }
-          }
-        });
-
-        if (allCompleted) {
-          clearInterval(interval);
-          if (pill) {
-            pill.textContent = 'COMPLETED (Ready)';
-            pill.className = 'px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
-          }
-          playHlsStream(fileId);
-          showToast('BullMQ FFmpeg Transcoding completed! Streaming from Edge.', 'success');
-        } else if (anyProcessing && pill) {
-          pill.textContent = 'TRANSCODING...';
-          pill.className = 'px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse';
-        }
-      }
-
-      if (pollCount > 180) clearInterval(interval);
-    } catch {
-      clearInterval(interval);
-    }
-  }, 2500);
-}
-
-// ============================================================================
-// 4. RESUMABLE DOWNLOAD (HTTP 206 RANGE REQUEST TEST)
-// ============================================================================
-async function testRangeDownload(fileId, fileName) {
   try {
-    showToast(`Testing HTTP 206 Partial Content for ${fileName}...`, 'info');
-    const reqStart = performance.now();
-    const res = await fetch(`${STATE.edgeUrl}/edge/content/${fileId}`, {
-      headers: {
-        'Range': 'bytes=0-1048575'
-      }
+    const res = await apiRequest(`${CORE_API_URL}/admin/transcoding/status/${fileId}`, {
+      headers: { 'Authorization': `Bearer ${STATE.token}` }
     });
 
-    const durationMs = (performance.now() - reqStart).toFixed(1);
-    const contentRange = res.headers.get('Content-Range') || 'bytes 0-1048575/*';
-    const cdnEdge = res.headers.get('X-CDN-Edge') || 'edge-node-01';
-    const cdnRegion = res.headers.get('X-CDN-Region') || 'ap-south-1';
-    const cacheState = res.headers.get('X-Cache') || 'HIT (RAM/NVMe)';
-    const traceId = res.headers.get('X-Trace-Id') || 'trace_live_' + Math.random().toString(36).substring(2, 9);
-
-    const modal = document.getElementById('modal-range-test');
-    if (modal) {
-      document.getElementById('range-file-name').textContent = fileName;
-      document.getElementById('range-status-badge').textContent = `${res.status} Partial Content`;
-      document.getElementById('range-header-val').textContent = contentRange;
-      document.getElementById('range-edge-node').textContent = `${cdnEdge} (${cdnRegion})`;
-      document.getElementById('range-cache-state').textContent = cacheState;
-      document.getElementById('range-latency').textContent = `${durationMs} ms (Sub-10ms delivery)`;
-      document.getElementById('range-trace-id').textContent = traceId;
-      modal.classList.remove('hidden');
+    if (res.ok) {
+      const transcodes = res.data.transcodes || [];
+      updateTranscoderStepper(transcodes);
     }
   } catch (err) {
-    showToast(`Range test failed: ${err.message}`, 'error');
+    console.error('Transcode poll error:', err);
   }
 }
 
-async function purgeFileCache(fileId) {
-  if (!confirm(`Purge cache for file ${fileId} across all edge nodes?`)) return;
+function updateTranscoderStepper(records) {
+  const qualityMap = {
+    'Q_1080P': 'step-1080p',
+    'Q_720P': 'step-720p',
+    'Q_480P': 'step-480p',
+    'Q_360P': 'step-360p',
+    'Q_240P': 'step-240p',
+    'Q_144P': 'step-144p'
+  };
+
+  records.forEach(t => {
+    const stepId = qualityMap[t.quality];
+    const el = document.getElementById(stepId);
+    if (!el) return;
+
+    const badge = el.querySelector('.status-badge');
+    if (!badge) return;
+
+    if (t.status === 'COMPLETED') {
+      badge.textContent = 'READY';
+      badge.className = 'status-badge px-2 py-0.5 text-[10px] font-mono font-bold uppercase rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+    } else if (t.status === 'PROCESSING') {
+      badge.textContent = 'ENCODING...';
+      badge.className = 'status-badge px-2 py-0.5 text-[10px] font-mono font-bold uppercase rounded bg-brand-500/20 text-brand-300 border border-brand-500/30 animate-pulse';
+    } else if (t.status === 'FAILED') {
+      badge.textContent = 'FAILED';
+      badge.className = 'status-badge px-2 py-0.5 text-[10px] font-mono font-bold uppercase rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
+      if (t.errorMessage) el.title = t.errorMessage;
+    }
+  });
+}
+
+// ============================================================================
+// 8. MULTI-REGION TOPOLOGY & GEODNS FAILOVER
+// ============================================================================
+async function refreshTopologyNodes() {
   try {
-    const res = await fetch(`${STATE.coreUrl}/admin/purge`, {
+    const res = await apiRequest(`${CORE_API_URL}/admin/health/nodes`, {
+      headers: STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {}
+    });
+
+    if (res.ok) {
+      const nodes = res.data.nodes || [];
+      renderTopologyGrid(nodes);
+    }
+  } catch (err) {
+    console.error('Topology fetch error:', err);
+  }
+}
+
+function renderTopologyGrid(nodes) {
+  const grid = document.getElementById('topology-nodes-grid');
+  if (!grid) return;
+
+  if (nodes.length === 0) {
+    // Default 3 Edge Node Representation if DB empty
+    nodes = [
+      { id: 'edge-node-01', name: 'Mumbai Edge (ap-south-1)', region: 'ap-south-1', status: 'HEALTHY', latencyMs: 8 },
+      { id: 'edge-node-02', name: 'Virginia Edge (us-east-1)', region: 'us-east-1', status: 'HEALTHY', latencyMs: 65 },
+      { id: 'edge-node-03', name: 'Frankfurt Edge (eu-central-1)', region: 'eu-central-1', status: 'HEALTHY', latencyMs: 42 }
+    ];
+  }
+
+  grid.innerHTML = nodes.map(n => {
+    const isHealthy = n.status === 'HEALTHY';
+    const statusBg = isHealthy ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20' : 'text-rose-400 bg-rose-500/10 border-rose-500/20';
+    const dotColor = isHealthy ? 'bg-emerald-400' : 'bg-rose-400';
+
+    return `
+      <div class="p-4 rounded-xl bg-dark-900 border border-white/5 space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="font-bold text-white text-xs">${n.name}</span>
+          <span class="w-2.5 h-2.5 rounded-full ${dotColor}"></span>
+        </div>
+        <div class="text-[11px] font-mono text-slate-400 space-y-1">
+          <div class="flex justify-between"><span>Region:</span><span class="text-slate-200">${n.region}</span></div>
+          <div class="flex justify-between"><span>Latency:</span><span class="text-brand-300 font-bold">${n.latencyMs || 8} ms</span></div>
+          <div class="flex justify-between"><span>Status:</span><span class="px-1.5 py-0.2 rounded font-bold ${statusBg} border">${n.status}</span></div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function simulateNodeCrash() {
+  const edgeId = document.getElementById('sim-crash-node').value;
+  try {
+    const res = await apiRequest(`${CORE_API_URL}/admin/replication/failover/${edgeId}`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${STATE.token}` }
+    });
+
+    if (res.ok) {
+      showToast(`Simulated crash for ${edgeId}. Failover repair executed!`, 'success');
+      refreshTopologyNodes();
+    } else {
+      showToast(`Failover error: ${res.data?.message || res.status}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Crash trigger error: ${err.message}`, 'error');
+  }
+}
+
+function calculateGeoDNSRoute() {
+  const loc = document.getElementById('sim-client-loc').value;
+  let target = 'edge-node-01';
+  let dist = '12 km';
+
+  if (loc === 'New York') { target = 'edge-node-02 (Virginia)'; dist = '380 km'; }
+  else if (loc === 'Frankfurt' || loc === 'London') { target = 'edge-node-03 (Frankfurt)'; dist = '450 km'; }
+  else if (loc === 'Tokyo' || loc === 'Sydney') { target = 'edge-node-01 (Mumbai)'; dist = '5,400 km'; }
+
+  document.getElementById('geodns-result-card').classList.remove('hidden');
+  document.getElementById('geo-target-node').textContent = target;
+  document.getElementById('geo-distance').textContent = dist;
+}
+
+// ============================================================================
+// 9. EDGE CACHE PURGE & KAFKA INVALIDATION
+// ============================================================================
+async function executeClusterPurge() {
+  const fileId = document.getElementById('purge-file-id').value.trim();
+  if (!fileId) {
+    showToast('Please enter a File ID to purge', 'error');
+    return;
+  }
+
+  const badge = document.getElementById('purge-status-badge');
+  const output = document.getElementById('purge-response-json');
+  badge.textContent = 'Broadcasting...';
+  badge.className = 'px-2 py-0.5 text-[10px] font-mono uppercase font-bold rounded bg-amber-500/20 text-amber-300 animate-pulse';
+
+  try {
+    // Real Core API Purge Route: /api/v1/admin/cache/purge
+    const res = await apiRequest(`${CORE_API_URL}/admin/cache/purge`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -766,163 +1289,152 @@ async function purgeFileCache(fileId) {
       },
       body: JSON.stringify({ fileId })
     });
+
+    output.textContent = JSON.stringify(res.data, null, 2);
+
     if (res.ok) {
-      showToast(`Cache purged across all global edge nodes for ${fileId}`, 'success');
+      badge.textContent = '200 OK (Purged)';
+      badge.className = 'px-2 py-0.5 text-[10px] font-mono uppercase font-bold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+      showToast(`Cache purge broadcasted via Kafka for ${fileId}`, 'success');
     } else {
-      showToast('Cache purge failed', 'error');
+      badge.textContent = `HTTP ${res.status}`;
+      badge.className = 'px-2 py-0.5 text-[10px] font-mono uppercase font-bold rounded bg-rose-500/20 text-rose-400 border border-rose-500/30';
+      showToast(`Purge failed: ${res.data?.message || res.status}`, 'error');
     }
   } catch (err) {
+    badge.textContent = 'Network Error';
+    badge.className = 'px-2 py-0.5 text-[10px] font-mono uppercase font-bold rounded bg-rose-500/20 text-rose-400';
+    output.textContent = JSON.stringify({ error: err.message }, null, 2);
     showToast(`Purge error: ${err.message}`, 'error');
   }
 }
 
-// ============================================================================
-// 5. TOPOLOGY & GEODNS FAILOVER SIMULATOR
-// ============================================================================
-async function refreshClusterHealth() {
+async function executeEdgeDirectPurge() {
+  const fileId = document.getElementById('purge-file-id').value.trim();
+  if (!fileId) {
+    showToast('Please enter a File ID to purge', 'error');
+    return;
+  }
+
+  const badge = document.getElementById('purge-status-badge');
+  const output = document.getElementById('purge-response-json');
+  badge.textContent = 'Purging Edge RAM...';
+
   try {
-    const res = await fetch(`${STATE.coreUrl}/admin/health/nodes`, {
-      headers: STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {}
+    // Direct Edge RAM Purge Route: POST http://localhost:3001/edge/content/:fileId/purge
+    const res = await apiRequest(`${EDGE_URL}/edge/content/${fileId}/purge`, {
+      method: 'POST'
     });
+
+    output.textContent = JSON.stringify(res.data, null, 2);
     if (res.ok) {
-      const data = await res.json();
-      const nodesList = data.nodes || (Array.isArray(data) ? data : []);
-      nodesList.forEach(node => {
-        if (STATE.nodes[node.id]) {
-          STATE.nodes[node.id].status = node.status;
-        }
-      });
-      updateTopologyCards();
+      badge.textContent = 'Edge RAM Evicted';
+      badge.className = 'px-2 py-0.5 text-[10px] font-mono uppercase font-bold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+      showToast('Edge node RAM cache evicted immediately', 'success');
+    } else {
+      badge.textContent = `HTTP ${res.status}`;
+      badge.className = 'px-2 py-0.5 text-[10px] font-mono uppercase font-bold rounded bg-rose-500/20 text-rose-400';
+      showToast(`Edge purge failed: ${res.data?.message || res.status}`, 'error');
     }
-  } catch {
+  } catch (err) {
+    badge.textContent = 'Edge Error';
+    output.textContent = JSON.stringify({ error: err.message }, null, 2);
+    showToast(`Edge purge error: ${err.message}`, 'error');
   }
 }
-
-function updateTopologyCards() {
-  Object.keys(STATE.nodes).forEach(id => {
-    const node = STATE.nodes[id];
-    let cardId = id === 'edge-node-01' ? 'card-node-mumbai' : id === 'edge-node-02' ? 'card-node-frankfurt' : 'card-node-virginia';
-    const card = document.getElementById(cardId);
-    if (!card) return;
-
-    const badge = card.querySelector('.node-status-badge');
-    const isHealthy = node.status === 'HEALTHY';
-    if (badge) {
-      badge.textContent = node.status;
-      badge.className = `node-status-badge px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full ${
-        isHealthy ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-      }`;
-    }
-
-    const btn = card.querySelector('.btn-crash-toggle span');
-    if (btn) btn.textContent = isHealthy ? 'Simulate Node Crash' : 'Recover Node';
-  });
-}
-
-function simulateCrash(nodeId) {
-  if (STATE.nodes[nodeId]) {
-    STATE.nodes[nodeId].status = STATE.nodes[nodeId].status === 'HEALTHY' ? 'DOWN' : 'HEALTHY';
-    updateTopologyCards();
-    showToast(`${nodeId} status set to ${STATE.nodes[nodeId].status}`, STATE.nodes[nodeId].status === 'HEALTHY' ? 'success' : 'error');
-  }
-}
-
-function setSimFileId(fileId) {
-  const input = document.getElementById('sim-file-id');
-  if (input) input.value = fileId;
-  const tabTopo = document.querySelector('[data-tab="tab-topology"]');
-  if (tabTopo) tabTopo.click();
-}
-
-document.getElementById('btn-run-geodns-test')?.addEventListener('click', async () => {
-  const loc = document.getElementById('sim-client-location').value;
-  const fileId = document.getElementById('sim-file-id').value || 'sample-file-01';
-
-  let selected = 'edge-node-02';
-  let dist = '637 km';
-  if (loc === 'Mumbai') { selected = 'edge-node-01'; dist = '12 km'; }
-  else if (loc === 'New York') { selected = 'edge-node-03'; dist = '380 km'; }
-  else if (loc === 'Tokyo') { selected = 'edge-node-01'; dist = '6,700 km'; }
-
-  if (STATE.nodes[selected]?.status === 'DOWN') {
-    const backup = selected === 'edge-node-02' ? 'edge-node-03' : 'edge-node-01';
-    selected = `${backup} (Failover Reroute)`;
-    dist = '5,800 km';
-    document.getElementById('routing-status-badge').textContent = 'Failover Rerouted';
-    document.getElementById('routing-status-badge').className = 'px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20';
-  } else {
-    document.getElementById('routing-status-badge').textContent = 'Optimal Edge Selected';
-    document.getElementById('routing-status-badge').className = 'px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
-  }
-
-  const resultCard = document.getElementById('geodns-result-card');
-  if (resultCard) resultCard.classList.remove('hidden');
-  const selNode = document.getElementById('geo-selected-node');
-  if (selNode) selNode.textContent = selected;
-  const distEl = document.getElementById('geo-distance');
-  if (distEl) distEl.textContent = dist;
-});
 
 // ============================================================================
-// 6. DEAD LETTER QUEUE (DLQ) & RELIABILITY
+// 10. DEAD LETTER QUEUE (DLQ) & RECOVERY
 // ============================================================================
-async function refreshDLQ() {
+async function refreshDLQTable() {
   try {
-    const res = await fetch(`${STATE.coreUrl}/admin/dlq`, {
-      headers: STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {}
+    const res = await apiRequest(`${CORE_API_URL}/admin/dlq`, {
+      headers: { 'Authorization': `Bearer ${STATE.token}` }
     });
+
     if (res.ok) {
-      const messages = await res.json();
-      renderDLQTable(messages);
+      const events = res.data.events || [];
+      renderDLQTable(events);
     }
-  } catch (e) {
-    console.error('Failed to fetch DLQ records', e);
+  } catch (err) {
+    console.error('DLQ fetch error:', err);
   }
 }
 
-function renderDLQTable(messages) {
+function renderDLQTable(events) {
   const tbody = document.getElementById('dlq-table-body');
+  const badge = document.getElementById('dlq-count-badge');
   if (!tbody) return;
 
-  if (!messages || messages.length === 0) {
+  if (badge) {
+    badge.textContent = events.length;
+    if (events.length > 0) badge.classList.remove('hidden');
+    else badge.classList.add('hidden');
+  }
+
+  if (events.length === 0) {
     tbody.innerHTML = `
       <tr>
         <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
-          <i data-lucide="check-circle" class="w-8 h-8 text-emerald-400/50 mx-auto mb-2"></i>
-          <p class="text-xs font-medium text-slate-300">Dead Letter Queue is Empty</p>
-          <p class="text-[11px] text-slate-500">All replication and transcoding jobs processed with zero permanent failures.</p>
+          <i data-lucide="shield-check" class="w-8 h-8 text-emerald-500/50 mx-auto mb-2"></i>
+          <p class="text-xs font-medium text-slate-300">DLQ is clean — 0 dead letters</p>
+          <p class="text-[11px] text-slate-500">All edge replication pipelines operating normally.</p>
         </td>
       </tr>`;
     if (window.lucide) lucide.createIcons();
     return;
   }
 
-  tbody.innerHTML = messages.map(m => `
+  tbody.innerHTML = events.map(e => `
     <tr class="hover:bg-dark-850/50 transition">
-      <td class="p-3.5 font-mono text-brand-300">${m.id?.substring(0, 8)}...</td>
-      <td class="p-3.5 font-medium text-slate-200 font-sans">${m.topic || 'replication.dlq'}</td>
-      <td class="p-3.5 text-rose-400 font-mono text-xs truncate max-w-xs">${m.errorMessage || 'Timeout'}</td>
-      <td class="p-3.5"><span class="px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">Failed (${m.attempts || 3}x)</span></td>
-      <td class="p-3.5 text-slate-400">${new Date(m.createdAt).toLocaleTimeString()}</td>
-      <td class="p-3.5 text-right">
-        <button onclick="replayDlqMessage('${m.id}')" class="px-2.5 py-1 rounded bg-brand-600/20 hover:bg-brand-600 text-brand-300 hover:text-white text-[11px] font-medium transition">Replay Job</button>
+      <td class="p-3 text-slate-400 font-mono">${e.id.substring(0, 8)}...</td>
+      <td class="p-3 font-mono text-slate-200">${e.fileId || '--'}</td>
+      <td class="p-3 font-bold text-amber-300">${e.edgeNodeId || '--'}</td>
+      <td class="p-3 text-rose-400 font-bold">${e.attempts}</td>
+      <td class="p-3 text-slate-400 truncate max-w-xs" title="${e.lastError || ''}">${e.lastError || 'Replication Timeout'}</td>
+      <td class="p-3 text-right">
+        <button onclick="replayDLQEvent('${e.id}')" class="px-2.5 py-1 rounded bg-brand-600/20 hover:bg-brand-600 text-brand-300 hover:text-white text-[11px] font-semibold transition">Replay</button>
       </td>
     </tr>
   `).join('');
+
   if (window.lucide) lucide.createIcons();
 }
 
-async function replayDlqMessage(id) {
+async function replayDLQEvent(id) {
   try {
-    const res = await fetch(`${STATE.coreUrl}/admin/dlq/replay/${id}`, {
+    const res = await apiRequest(`${CORE_API_URL}/admin/dlq/replay`, {
       method: 'POST',
-      headers: STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {}
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${STATE.token}`
+      },
+      body: JSON.stringify({ event_id: id })
     });
+
     if (res.ok) {
-      showToast(`Replaying message ${id}...`, 'success');
-      refreshDLQ();
+      showToast('DLQ event re-queued for execution', 'success');
+      refreshDLQTable();
     } else {
-      showToast('DLQ replay failed', 'error');
+      showToast(`Replay failed: ${res.data?.message || res.status}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Replay error: ${err.message}`, 'error');
+  }
+}
+
+async function replayAllDLQEvents() {
+  try {
+    const res = await apiRequest(`${CORE_API_URL}/admin/dlq/replay-all`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${STATE.token}` }
+    });
+
+    if (res.ok) {
+      showToast('All DLQ events re-queued!', 'success');
+      refreshDLQTable();
+    } else {
+      showToast(`Replay all failed: ${res.data?.message || res.status}`, 'error');
     }
   } catch (err) {
     showToast(`Replay error: ${err.message}`, 'error');
@@ -930,49 +1442,228 @@ async function replayDlqMessage(id) {
 }
 
 // ============================================================================
-// 7. WEBSOCKET TELEMETRY & LIVE OBSERVABILITY
+// 11. DEVELOPER API KEYS & RBAC PORTAL
 // ============================================================================
-function initWebSocket() {
-  if (typeof io === 'undefined') return;
+async function refreshApiKeys() {
   try {
-    const socket = io(`http://${HOSTNAME}:3000`, { transports: ['websocket'] });
-    socket.on('connect', () => {
-      const dot = document.getElementById('ws-status-dot');
-      const text = document.getElementById('ws-status-text');
-      if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-400';
-      if (text) text.textContent = 'Live WS';
+    const res = await apiRequest(`${CORE_API_URL}/auth/api-keys`, {
+      headers: { 'Authorization': `Bearer ${STATE.token}` }
     });
-    socket.on('disconnect', () => {
-      const dot = document.getElementById('ws-status-dot');
-      const text = document.getElementById('ws-status-text');
-      if (dot) dot.className = 'w-2 h-2 rounded-full bg-rose-500';
-      if (text) text.textContent = 'Offline';
-    });
-    STATE.socket = socket;
-  } catch {
-    console.warn('Socket.IO gateway offline');
+
+    if (res.ok) {
+      const keys = Array.isArray(res.data) ? res.data : [];
+      renderApiKeysTable(keys);
+    }
+  } catch (err) {
+    console.error('API Keys fetch error:', err);
   }
 }
 
-function initTelemetryChart() {
-  const ctx = document.getElementById('telemetry-chart')?.getContext('2d');
-  if (!ctx) return;
+function renderApiKeysTable(keys) {
+  const tbody = document.getElementById('api-keys-table-body');
+  if (!tbody) return;
 
-  const labels = Array.from({ length: 15 }, (_, i) => `${15 - i}s ago`);
-  const rpsData = [1150, 1180, 1220, 1210, 1240, 1260, 1230, 1250, 1270, 1240, 1260, 1280, 1250, 1290, 1240];
+  if (keys.length === 0) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
+          <i data-lucide="key" class="w-8 h-8 text-slate-600 mx-auto mb-2"></i>
+          <p class="text-xs font-medium text-slate-300">No active API keys</p>
+          <p class="text-[11px] text-slate-500">Generate a key above to enable automated pipeline access.</p>
+        </td>
+      </tr>`;
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
+
+  tbody.innerHTML = keys.map(k => `
+    <tr class="hover:bg-dark-850/50 transition">
+      <td class="p-3 font-bold text-slate-200">${k.name}</td>
+      <td class="p-3 text-brand-300">${k.keyPrefix || 'prv_live_...'}</td>
+      <td class="p-3"><span class="px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">${k.role}</span></td>
+      <td class="p-3 text-slate-400">${new Date(k.createdAt).toLocaleDateString()}</td>
+      <td class="p-3"><span class="text-emerald-400 font-semibold">Active</span></td>
+      <td class="p-3 text-right">
+        <button onclick="revokeApiKey('${k.id}')" class="px-2.5 py-1 rounded bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white text-[11px] font-medium transition">Revoke</button>
+      </td>
+    </tr>
+  `).join('');
+
+  if (window.lucide) lucide.createIcons();
+}
+
+document.getElementById('btn-submit-create-key')?.addEventListener('click', async () => {
+  const name = document.getElementById('new-key-name').value.trim() || 'CI-Pipeline-Key';
+  const role = document.getElementById('new-key-role').value;
+  const expiryDays = parseInt(document.getElementById('new-key-expiry').value, 10);
+
+  try {
+    const res = await apiRequest(`${CORE_API_URL}/auth/api-keys`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${STATE.token}`
+      },
+      body: JSON.stringify({ name, role, expiresInDays: expiryDays })
+    });
+
+    if (res.ok) {
+      document.getElementById('created-key-card').classList.remove('hidden');
+      document.getElementById('created-key-plaintext').value = res.data.apiKey;
+      const testInput = document.getElementById('test-api-key-input');
+      if (testInput) testInput.value = res.data.apiKey;
+      showToast('API Key generated successfully (Auto-populated into Test Lab below)', 'success');
+      refreshApiKeys();
+    } else {
+      showToast(`Key creation failed: ${res.data?.message || res.status}`, 'error');
+    }
+  } catch (err) {
+    showToast(`API Key error: ${err.message}`, 'error');
+  }
+});
+
+document.getElementById('btn-copy-key')?.addEventListener('click', () => {
+  const input = document.getElementById('created-key-plaintext');
+  navigator.clipboard.writeText(input.value);
+  showToast('API Key copied to clipboard', 'success');
+});
+
+async function executeApiKeyTest() {
+  const apiKey = document.getElementById('test-api-key-input').value.trim();
+  const endpoint = document.getElementById('test-api-endpoint').value;
+
+  if (!apiKey) {
+    showToast('Please enter or paste an API Key (prv_live_...)', 'error');
+    return;
+  }
+
+  const outputBox = document.getElementById('api-test-output-box');
+  const badge = document.getElementById('api-test-status-badge');
+  const pre = document.getElementById('api-test-response-pre');
+
+  outputBox.classList.remove('hidden');
+  badge.textContent = 'Testing...';
+  badge.className = 'px-2 py-0.5 text-[10px] font-mono font-bold uppercase rounded bg-dark-900 border text-slate-400';
+  pre.textContent = `Sending authenticated request to: ${CORE_API_URL}${endpoint}\nHeaders:\n  x-api-key: ${apiKey.substring(0, 16)}...\n\nWaiting for response...`;
+
+  try {
+    const res = await apiRequest(`${CORE_API_URL}${endpoint}`, {
+      headers: {
+        'x-api-key': apiKey
+      }
+    });
+
+    if (res.ok) {
+      badge.textContent = `${res.status} OK (AUTHENTICATED)`;
+      badge.className = 'px-2 py-0.5 text-[10px] font-mono font-bold uppercase rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+      pre.textContent = JSON.stringify(res.data, null, 2);
+      showToast(`API Key authenticated successfully (HTTP ${res.status})`, 'success');
+    } else {
+      badge.textContent = `HTTP ${res.status}`;
+      badge.className = 'px-2 py-0.5 text-[10px] font-mono font-bold uppercase rounded bg-rose-500/20 text-rose-300 border border-rose-500/30';
+      pre.textContent = JSON.stringify(res.data, null, 2);
+      showToast(`Auth rejected: ${res.data?.message || res.status}`, 'error');
+    }
+  } catch (err) {
+    badge.textContent = 'Error';
+    badge.className = 'px-2 py-0.5 text-[10px] font-mono font-bold uppercase rounded bg-rose-500/20 text-rose-300 border border-rose-500/30';
+    pre.textContent = `Request error: ${err.message}`;
+    showToast(`Request failed: ${err.message}`, 'error');
+  }
+}
+
+async function revokeApiKey(id) {
+  if (!confirm('Are you sure you want to revoke this API key?')) return;
+  try {
+    const res = await apiRequest(`${CORE_API_URL}/auth/api-keys/${id}`, {
+      method: 'DELETE',
+      headers: { 'Authorization': `Bearer ${STATE.token}` }
+    });
+
+    if (res.ok) {
+      showToast('API Key revoked', 'success');
+      refreshApiKeys();
+    } else {
+      showToast(`Revocation failed: ${res.data?.message || res.status}`, 'error');
+    }
+  } catch (err) {
+    showToast(`Revoke error: ${err.message}`, 'error');
+  }
+}
+
+// ============================================================================
+// 12. WEBSOCKET REAL-TIME TELEMETRY
+// ============================================================================
+function setupSocketIO() {
+  if (typeof io === 'undefined') return;
+
+  try {
+    const socket = io(CORE_BASE_URL, { transports: ['websocket', 'polling'] });
+    STATE.socket = socket;
+
+    socket.on('connect', () => {
+      document.getElementById('dot-ws').className = 'w-2 h-2 rounded-full bg-emerald-400';
+      document.getElementById('text-ws').textContent = 'Live WS Connected';
+    });
+
+    socket.on('disconnect', () => {
+      document.getElementById('dot-ws').className = 'w-2 h-2 rounded-full bg-rose-400';
+      document.getElementById('text-ws').textContent = 'WS Disconnected';
+    });
+
+    socket.on('cache.access', (data) => {
+      appendLiveCacheItem(data);
+    });
+
+    socket.on('upload.progress', (data) => {
+      if (data.fileId === STATE.activeUpload?.fileId) {
+        document.getElementById('upload-status-text').textContent = `WS Broadcast: Chunk ${data.chunkIndex + 1}/${data.totalChunks} (${data.percentage}%)`;
+      }
+    });
+
+  } catch (err) {
+    console.error('Socket.IO connection failed:', err);
+  }
+}
+
+function appendLiveCacheItem(data) {
+  const feed = document.getElementById('live-cache-feed');
+  if (!feed) return;
+
+  const row = document.createElement('div');
+  const isHit = data.eventType === 'hit';
+  const tag = isHit ? '[HIT]' : '[MISS]';
+  const color = isHit ? 'text-emerald-400' : 'text-amber-400';
+
+  row.className = 'p-2 rounded-lg bg-dark-900 border border-white/5 flex items-center justify-between text-[11px] font-mono animate-fadeIn';
+  row.innerHTML = `
+    <span class="${color} font-semibold">${tag} ${data.fileId?.substring(0, 8)}</span>
+    <span class="text-slate-500 text-[10px]">${data.region || 'Mumbai'} • ${data.downloadLatencyMs || 2}ms</span>
+  `;
+
+  feed.prepend(row);
+  if (feed.children.length > 20) feed.lastChild.remove();
+}
+
+function initTelemetryChart() {
+  const ctx = document.getElementById('telemetry-chart');
+  if (!ctx || STATE.telemetryChart) return;
+
+  const labels = Array.from({ length: 20 }, (_, i) => `${20 - i}s ago`);
+  const data = Array.from({ length: 20 }, () => Math.floor(1150 + Math.random() * 120));
 
   STATE.telemetryChart = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: labels,
+      labels,
       datasets: [{
-        label: 'Requests / Sec (RPS)',
-        data: rpsData,
+        label: 'Requests per Second',
+        data,
         borderColor: '#6366f1',
         backgroundColor: 'rgba(99, 102, 241, 0.08)',
-        borderWidth: 2,
         fill: true,
-        tension: 0.35,
+        tension: 0.4,
+        borderWidth: 2,
         pointRadius: 0
       }]
     },
@@ -993,127 +1684,15 @@ function initTelemetryChart() {
       STATE.telemetryChart.data.datasets[0].data.shift();
       STATE.telemetryChart.data.datasets[0].data.push(nextRps);
       STATE.telemetryChart.update('none');
-      const metric = document.getElementById('metric-rps');
-      if (metric) metric.textContent = nextRps.toLocaleString();
+      const rpsEl = document.getElementById('metric-rps');
+      if (rpsEl) rpsEl.textContent = nextRps.toLocaleString();
     }
   }, 1000);
 }
 
 // ============================================================================
-// 8. DEVELOPER API KEYS & RBAC PORTAL
+// 13. UTILITY FUNCTIONS
 // ============================================================================
-async function refreshApiKeys() {
-  try {
-    const res = await fetch(`${STATE.coreUrl}/auth/api-keys`, {
-      headers: STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {}
-    });
-    if (res.ok) {
-      const keys = await res.json();
-      renderApiKeysTable(keys);
-    }
-  } catch (e) {
-    console.error('Failed to fetch API keys', e);
-  }
-}
-
-function renderApiKeysTable(keys) {
-  const tbody = document.getElementById('api-keys-table-body');
-  if (!tbody) return;
-
-  if (!keys || keys.length === 0) {
-    tbody.innerHTML = `
-      <tr>
-        <td colspan="6" class="p-8 text-center text-slate-500 font-sans">
-          <i data-lucide="key" class="w-8 h-8 text-indigo-400/50 mx-auto mb-2"></i>
-          <p class="text-xs font-medium text-slate-300">No active API keys</p>
-          <p class="text-[11px] text-slate-500">Create an API key for automated streaming or CI/CD pipelines.</p>
-        </td>
-      </tr>`;
-    if (window.lucide) lucide.createIcons();
-    return;
-  }
-
-  tbody.innerHTML = keys.map(k => `
-    <tr class="hover:bg-dark-850/50 transition">
-      <td class="p-3.5 font-bold text-slate-200 font-sans">${k.name}</td>
-      <td class="p-3.5 text-brand-300">${k.keyPrefix || 'prv_live_...'}</td>
-      <td class="p-3.5"><span class="px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">${k.role}</span></td>
-      <td class="p-3.5 text-slate-400">${new Date(k.createdAt).toLocaleDateString()}</td>
-      <td class="p-3.5"><span class="text-emerald-400 font-semibold">Active</span></td>
-      <td class="p-3.5 text-right">
-        <button onclick="revokeApiKey('${k.id}')" class="px-2.5 py-1 rounded bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white text-[11px] font-medium transition">Revoke</button>
-      </td>
-    </tr>
-  `).join('');
-  if (window.lucide) lucide.createIcons();
-}
-
-async function revokeApiKey(id) {
-  if (!confirm('Are you sure you want to revoke this API key?')) return;
-  try {
-    const res = await fetch(`${STATE.coreUrl}/auth/api-keys/${id}`, {
-      method: 'DELETE',
-      headers: STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {}
-    });
-    if (res.ok) {
-      showToast('API Key revoked', 'success');
-      refreshApiKeys();
-    }
-  } catch (e) {
-    showToast(`Revocation failed: ${e.message}`, 'error');
-  }
-}
-
-document.getElementById('btn-submit-create-key')?.addEventListener('click', async () => {
-  const name = document.getElementById('new-key-name').value || 'My-API-Key';
-  const role = document.getElementById('new-key-role').value;
-  const expiryDays = parseInt(document.getElementById('new-key-expiry').value, 10);
-
-  try {
-    const res = await fetch(`${STATE.coreUrl}/auth/api-keys`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(STATE.token ? { 'Authorization': `Bearer ${STATE.token}` } : {})
-      },
-      body: JSON.stringify({ name, role, expiresInDays: expiryDays })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      document.getElementById('created-key-card').classList.remove('hidden');
-      document.getElementById('created-key-plaintext').value = data.apiKey;
-      showToast('API Key generated successfully', 'success');
-      refreshApiKeys();
-    }
-  } catch (e) {
-    showToast(`Key creation failed: ${e.message}`, 'error');
-  }
-});
-
-document.getElementById('btn-copy-key')?.addEventListener('click', () => {
-  const input = document.getElementById('created-key-plaintext');
-  navigator.clipboard.writeText(input.value);
-  showToast('Copied API Key to clipboard', 'success');
-});
-
-// ============================================================================
-// 9. UTILITIES & GLOBAL EXPORTS
-// ============================================================================
-async function computeSha256(arrayBuffer) {
-  if (typeof sha256 === 'function') {
-    return sha256(arrayBuffer);
-  }
-  if (window.crypto && window.crypto.subtle && typeof window.crypto.subtle.digest === 'function') {
-    try {
-      const hashBuffer = await crypto.subtle.digest('SHA-256', arrayBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    } catch {}
-  }
-  return '';
-}
-
 function formatBytes(bytes) {
   if (!bytes || bytes === 0) return '0 B';
   const k = 1024;
@@ -1123,27 +1702,49 @@ function formatBytes(bytes) {
 }
 
 function showToast(message, type = 'info') {
-  const toast = document.createElement('div');
-  const bg = type === 'success' ? 'bg-emerald-600 text-white' : type === 'error' ? 'bg-rose-600 text-white' : 'bg-dark-800 text-slate-200 border border-white/10';
-  toast.className = `fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-xl text-xs font-medium shadow-2xl transition-all duration-300 transform translate-y-2 opacity-0 flex items-center gap-2 ${bg}`;
-  toast.innerHTML = `<span>${message}</span>`;
-  document.body.appendChild(toast);
-  
-  setTimeout(() => {
-    toast.classList.remove('translate-y-2', 'opacity-0');
-  }, 10);
+  const container = document.getElementById('toast-container');
+  if (!container) return;
 
+  const toast = document.createElement('div');
+  const bg = type === 'success' ? 'bg-emerald-600 text-white' :
+             type === 'error' ? 'bg-rose-600 text-white' : 'bg-dark-800 text-slate-200 border border-white/10';
+
+  toast.className = `px-4 py-2.5 rounded-xl text-xs font-medium shadow-2xl transition-all duration-300 transform translate-y-2 opacity-0 flex items-center gap-2 ${bg} pointer-events-auto`;
+  toast.innerHTML = `<span>${message}</span>`;
+  container.appendChild(toast);
+
+  setTimeout(() => toast.classList.remove('translate-y-2', 'opacity-0'), 10);
   setTimeout(() => {
     toast.classList.add('translate-y-2', 'opacity-0');
     setTimeout(() => toast.remove(), 300);
-  }, 3000);
+  }, 3500);
 }
 
-window.switchRole = switchRole;
+// Global Window Bindings for HTML onclick attributes
+window.handleLogout = handleLogout;
+window.testProfileMeRoute = testProfileMeRoute;
+window.copyTokenToClipboard = copyTokenToClipboard;
+window.refreshFilesList = refreshFilesList;
+window.deleteFileRecord = deleteFileRecord;
+window.onStreamVideoSelected = onStreamVideoSelected;
+window.onDownloadFileSelected = onDownloadFileSelected;
 window.playHlsStream = playHlsStream;
-window.testRangeDownload = testRangeDownload;
-window.purgeFileCache = purgeFileCache;
-window.setSimFileId = setSimFileId;
-window.simulateCrash = simulateCrash;
-window.replayDlqMessage = replayDlqMessage;
+window.openRangeTester = openRangeTester;
+window.triggerPurgeModal = triggerPurgeModal;
+window.executeRangeDownloadTest = executeRangeDownloadTest;
+window.generatePresignedUrl = generatePresignedUrl;
+window.copyPresignedUrl = copyPresignedUrl;
+window.startBrowserResumableDownload = startBrowserResumableDownload;
+window.pollTranscodeStatus = pollTranscodeStatus;
+window.refreshTopologyNodes = refreshTopologyNodes;
+window.simulateNodeCrash = simulateNodeCrash;
+window.calculateGeoDNSRoute = calculateGeoDNSRoute;
+window.executeClusterPurge = executeClusterPurge;
+window.executeEdgeDirectPurge = executeEdgeDirectPurge;
+window.refreshDLQTable = refreshDLQTable;
+window.replayDLQEvent = replayDLQEvent;
+window.replayAllDLQEvents = replayAllDLQEvents;
+window.refreshApiKeys = refreshApiKeys;
 window.revokeApiKey = revokeApiKey;
+window.executeApiKeyTest = executeApiKeyTest;
+window.clearDevLogs = clearDevLogs;

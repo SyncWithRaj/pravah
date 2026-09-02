@@ -7,11 +7,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { MetadataService } from './metadata.service';
-import { JwtAuthGuard, CurrentUser } from '../auth';
+import { UnifiedAuthGuard, CurrentUser } from '../auth';
 import { User } from '@prisma/client';
 import { GetFilesQueryDto } from './dto/get-files-query.dto';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(UnifiedAuthGuard)
 @Controller('metadata')
 export class MetadataController {
   constructor(private readonly metadataService: MetadataService) {}

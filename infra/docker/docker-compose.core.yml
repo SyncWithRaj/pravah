@@ -168,9 +168,12 @@ services:
     networks:
       - pravah-net
 
-  # 11. Pravah Control Center UI Dashboard
+  # 11. Pravah Web Dashboard (Control Plane UI)
   dashboard:
-    image: nginx:alpine
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.dashboard
+    image: pravah-dashboard:latest
     container_name: pravah-dashboard
     restart: always
     ports:
