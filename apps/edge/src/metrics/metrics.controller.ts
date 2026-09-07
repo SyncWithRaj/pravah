@@ -1,5 +1,4 @@
 import { Controller, Get, Res } from '@nestjs/common';
-import { Response } from 'express';
 import { MetricsService } from './metrics.service';
 
 @Controller('metrics')
@@ -7,9 +6,14 @@ export class MetricsController {
   constructor(private readonly metricsService: MetricsService) {}
 
   @Get()
-  async getMetrics(@Res() res: Response) {
-    res.setHeader('Content-Type', this.metricsService.getContentType());
-    const metrics = await this.metricsService.getMetrics();
-    res.send(metrics);
+  async getMetrics(@Res({ passthrough: true }) res: any) {
+    const contentType = this.metricsService.getContentType();
+    if (res.setHeader) {
+      res.setHeader('Content-Type', contentType);
+    } else if (res.header) {
+      res.header('Content-Type', contentType);
+    }
+    return this.metricsService.getMetrics();
   }
 }
+

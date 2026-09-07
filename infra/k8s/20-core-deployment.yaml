@@ -70,11 +70,11 @@ spec:
               cpu: "250m"
               memory: "512Mi"
             limits:
-              cpu: "2000m"
+              cpu: "1800m"
               memory: "2048Mi"
           readinessProbe:
             httpGet:
-              path: /api/v1/metrics
+              path: /api/v1/health
               port: 3000
             initialDelaySeconds: 10
             periodSeconds: 5
@@ -82,7 +82,7 @@ spec:
             failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: /api/v1/metrics
+              path: /api/v1/health
               port: 3000
             initialDelaySeconds: 20
             periodSeconds: 10

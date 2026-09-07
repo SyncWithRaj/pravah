@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: pravah-k6-benchmark-script
+  name: pravah-k6-benchmark-spoke
   namespace: pravah-system
 data:
   benchmark.js: |
@@ -16,24 +16,24 @@ data:
 
     export const options = {
       scenarios: {
-        ramp_to_100k: {
+        ramp_to_30k: {
           executor: 'ramping-arrival-rate',
           startRate: 1000,
           timeUnit: '1s',
-          preAllocatedVUs: 400,
-          maxVUs: 1500,
+          preAllocatedVUs: 200,
+          maxVUs: 800,
           stages: [
-            { duration: '15s', target: 5000 },   // Warm-up: 5k RPS/pod (25,000 RPS aggregate)
-            { duration: '20s', target: 10000 },  // Ramp: 10k RPS/pod (50,000 RPS aggregate)
-            { duration: '30s', target: 20000 },  // 🚀 PEAK: 20k RPS/pod (100,000 RPS aggregate sustained!)
-            { duration: '15s', target: 5000 },   // Cool-down (25,000 RPS aggregate)
+            { duration: '15s', target: 3500 },   // Warm-up: 3.5k * 2 = 7,000 RPS
+            { duration: '20s', target: 7500 },   // Ramp: 7.5k * 2 = 15,000 RPS
+            { duration: '30s', target: 15000 },  // 🚀 PEAK: 15k * 2 = 30,000 RPS Sustained
+            { duration: '15s', target: 7500 },   // Cool-down
             { duration: '10s', target: 1000 },   // Wind-down
           ],
         },
       },
       thresholds: {
-        http_req_duration: ['p(95)<100'],
-        errors: ['rate<0.05'],
+        http_req_duration: ['p(95)<50'],
+        errors: ['rate<0.01'],
       },
     };
 
@@ -58,16 +58,16 @@ data:
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: pravah-100k-benchmark
+  name: pravah-benchmark-spoke-30k
   namespace: pravah-system
 spec:
-  parallelism: 5
-  completions: 5
+  parallelism: 2
+  completions: 2
   backoffLimit: 1
   template:
     metadata:
       labels:
-        app: pravah-100k-benchmark
+        app: pravah-benchmark-spoke-30k
     spec:
       restartPolicy: Never
       affinity:
@@ -79,7 +79,7 @@ spec:
                   matchExpressions:
                     - key: app
                       operator: In
-                      values: ["pravah-100k-benchmark"]
+                      values: ["pravah-benchmark-spoke-30k"]
                 topologyKey: "kubernetes.io/hostname"
       containers:
         - name: k6
@@ -91,15 +91,15 @@ spec:
               value: "http://pravah-edge-service.pravah-system.svc.cluster.local:3001"
           resources:
             requests:
-              cpu: "500m"
-              memory: "512Mi"
+              cpu: "300m"
+              memory: "256Mi"
             limits:
-              cpu: "1800m"
-              memory: "2048Mi"
+              cpu: "1000m"
+              memory: "1024Mi"
           volumeMounts:
             - name: script-vol
               mountPath: /scripts
       volumes:
         - name: script-vol
           configMap:
-            name: pravah-k6-benchmark-script
+            name: pravah-k6-benchmark-spoke

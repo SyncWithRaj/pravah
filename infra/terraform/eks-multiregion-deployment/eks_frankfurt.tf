@@ -98,6 +98,7 @@ resource "aws_eks_node_group" "frankfurt_edge" {
   node_role_arn   = aws_iam_role.frankfurt_node_group.arn
   subnet_ids      = aws_subnet.frankfurt_private[*].id
   instance_types  = [var.edge_instance_type]
+  ami_type        = "AL2023_x86_64_STANDARD"
 
   scaling_config {
     desired_size = var.edge_desired_capacity
