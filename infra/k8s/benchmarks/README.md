@@ -1,10 +1,10 @@
-# ⚡ Pravah CDN — Kubernetes k6 Distributed Load Testing Jobs
+# Pravah CDN — Kubernetes k6 Distributed Load Testing Jobs
 
-This directory contains containerized **k6 distributed load testing jobs** designed to run inside Kubernetes clusters directly targeting the Edge Data Plane without SSH or external network bottlenecks.
+This directory contains containerized k6 distributed load testing jobs designed to run inside Kubernetes clusters directly targeting the Edge Data Plane without SSH or external network bottlenecks.
 
 ---
 
-## 📁 Manifest Directory
+## Manifest Directory
 
 ```
 infra/k8s/benchmarks/
@@ -24,20 +24,20 @@ infra/k8s/benchmarks/
 
 ---
 
-## 🏆 The 106,000 RPS Winning Formula (Trial 5 Configuration)
+## The 106,000 RPS Benchmark Matrix (Trial 5 Configuration)
 
-To achieve **106,000 sustained RPS with 0.0000% error rate** across Mumbai, Virginia, and Frankfurt:
+Configuration used to achieve 106,000 sustained RPS with 0.0000% error rate across Mumbai, Virginia, and Frankfurt:
 
 | Region | Cluster Role | Load Generator Manifest | k6 Pods | maxVUs per Pod | Target RPS | Result |
 | :--- | :--- | :--- | :---: | :---: | :---: | :---: |
-| **Mumbai (`ap-south-1`)** | Central Hub | `61-k6-mumbai-34k.yaml` | 4 | 350 | ~34,000 RPS | **34,000 RPS (0 errors)** |
-| **Virginia (`us-east-1`)** | Western Spoke | `62-k6-spoke-36k.yaml` | 4 | 500 | ~36,000 RPS | **36,000 RPS (0 errors)** |
-| **Frankfurt (`eu-central-1`)**| European Spoke | `62-k6-spoke-36k.yaml` | 4 | 500 | ~36,000 RPS | **36,000 RPS (0 errors)** |
+| **Mumbai (`ap-south-1`)** | Central Hub | `61-k6-mumbai-34k.yaml` | 4 | 350 | ~34,000 RPS | 34,000 RPS (0 errors) |
+| **Virginia (`us-east-1`)** | Western Spoke | `62-k6-spoke-36k.yaml` | 4 | 500 | ~36,000 RPS | 36,000 RPS (0 errors) |
+| **Frankfurt (`eu-central-1`)**| European Spoke | `62-k6-spoke-36k.yaml` | 4 | 500 | ~36,000 RPS | 36,000 RPS (0 errors) |
 | **GLOBAL TOTAL** | **3 Continents** | **Distributed Mesh** | **12 Pods** | **--** | **106,000 RPS** | **106,000 RPS (0.0000% Errors)** |
 
 ---
 
-## 🚀 Execution Guide
+## Execution Guide
 
 ### Launching in Mumbai (Hub)
 ```bash

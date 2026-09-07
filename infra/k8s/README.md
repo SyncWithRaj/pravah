@@ -1,10 +1,10 @@
-# ☸️ Pravah CDN — Kubernetes (K8s) Production Manifests
+# Pravah CDN — Kubernetes (K8s) Production Manifests
 
-This directory contains production-grade Kubernetes resource manifests for deploying the **Pravah Distributed CDN** control plane and edge data planes.
+This directory contains production-grade Kubernetes resource manifests for deploying the Pravah Distributed CDN control plane and edge data planes.
 
 ---
 
-## 📁 Directory Structure & Execution Order
+## Directory Structure & Execution Order
 
 All manifests are strictly ordered by numeric prefix to guarantee correct dependency resolution:
 
@@ -40,7 +40,7 @@ infra/k8s/
 
 ---
 
-## 🚀 Deployment Instructions
+## Deployment Instructions
 
 ### 1. One-Command Cluster Rollout
 ```bash
@@ -71,7 +71,7 @@ kubectl get svc -n pravah-system
 
 ---
 
-## 📊 Running Distributed k6 Load Tests
+## Running Distributed k6 Load Tests
 
 Benchmark manifests are located in [`infra/k8s/benchmarks/`](./benchmarks/):
 
@@ -85,7 +85,7 @@ kubectl logs -f job/k6-load-test -n pravah-system
 
 ---
 
-## 🛠️ Operations & Troubleshooting
+## Operations & Troubleshooting
 
 * **Restart Edge Service:**
   ```bash

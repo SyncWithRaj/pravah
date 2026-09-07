@@ -1,14 +1,14 @@
-# 🌍 Pravah CDN — Terraform Infrastructure as Code (IaC)
+# Pravah CDN — Terraform Infrastructure as Code (IaC)
 
-This directory contains production Infrastructure as Code (Terraform) modules and deployment blueprints for the **Pravah Distributed CDN** across multiple cloud topologies.
+This directory contains production Infrastructure as Code (Terraform) modules and deployment configurations for the Pravah Distributed CDN across multiple cloud topologies.
 
 ---
 
-## 📁 Directory Structure
+## Directory Structure
 
 ```
 infra/terraform/
-├── ec2-multi-region/              # 1. Multi-Region Standalone EC2 Infrastructure
+├── ec2-multi-region/              # Multi-Region Standalone EC2 Infrastructure
 │   ├── modules/
 │   │   ├── core_node/             # Central Origin Control Plane (Mumbai ap-south-1)
 │   │   ├── edge_node/             # Distributed Edge PoPs (Mumbai, Virginia, Frankfurt)
@@ -20,7 +20,7 @@ infra/terraform/
 │   ├── terraform.tfvars.example   # Example configuration variables
 │   └── README.md
 │
-├── eks-load-test/                 # 2. Historical Single-Region EKS Benchmark
+├── eks-load-test/                 # Historical Single-Region EKS Benchmark
 │   ├── vpc.tf                     # High-throughput benchmark VPC
 │   ├── eks.tf                     # AWS EKS Managed Cluster (2x t3.medium)
 │   ├── load-generator.tf          # Distributed k6 load generator instances
@@ -29,7 +29,7 @@ infra/terraform/
 │   ├── BENCHMARK_ANALYSIS.md      # Historical single-region benchmark analysis
 │   └── README.md
 │
-└── eks-multiregion-deployment/    # 3. Production Multi-Region EKS Architecture (106k RPS)
+└── eks-multiregion-deployment/    # Production Multi-Region EKS Architecture (106k RPS)
     ├── eks_mumbai.tf              # Hub Cluster (ap-south-1): 5 nodes (10 vCPUs), PostgreSQL, Kafka, MinIO, Core NLB
     ├── eks_virginia.tf            # Spoke Cluster (us-east-1): 4 nodes (8 vCPUs), 8 Edge Replicas
     ├── eks_frankfurt.tf           # Spoke Cluster (eu-central-1): 4 nodes (8 vCPUs), 8 Edge Replicas
@@ -45,17 +45,17 @@ infra/terraform/
 
 ---
 
-## 🚀 Deployment Topologies
+## Deployment Topologies
 
 | Architecture | Directory | Regions | Primary Use Case & Milestone | Status |
 | :--- | :--- | :---: | :--- | :---: |
-| **Multi-Region EC2 PoPs** | [`ec2-multi-region/`](./ec2-multi-region/README.md) | 🇮🇳 Mumbai<br/>🇺🇸 Virginia<br/>🇩🇪 Frankfurt | **Phase 6:** Real-world global Point-of-Presence (PoP) edge CDN delivery close to end users with measured geographic latency. | ✅ Validated |
-| **Single-Region EKS Test**| [`eks-load-test/`](./eks-load-test/README.md) | 🇮🇳 Mumbai | **Phase 8B:** Initial cloud stress testing on Kubernetes with 2,000 VUs and HPA verification. | 📜 Historical Baseline |
-| **Multi-Region EKS Mesh** | [`eks-multiregion-deployment/`](./eks-multiregion-deployment/README.md) | 🇮🇳 Mumbai (Hub)<br/>🇺🇸 Virginia (Spoke)<br/>🇩🇪 Frankfurt (Spoke) | **Phase 9:** 13-node, 26-vCPU production cluster. Achieved **106,000 RPS sustained peak** with **0.0000% error rate** across 2.76M requests with full Edge-to-Core HMAC telemetry. | 🏆 Production Reference |
+| **Multi-Region EC2 PoPs** | [`ec2-multi-region/`](./ec2-multi-region/README.md) | Mumbai, Virginia, Frankfurt | Phase 6: Real-world global Point-of-Presence (PoP) edge CDN delivery close to end users with measured geographic latency. | Validated |
+| **Single-Region EKS Test**| [`eks-load-test/`](./eks-load-test/README.md) | Mumbai | Phase 8B: Initial cloud stress testing on Kubernetes with 2,000 VUs and HPA verification. | Historical Baseline |
+| **Multi-Region EKS Mesh** | [`eks-multiregion-deployment/`](./eks-multiregion-deployment/README.md) | Mumbai (Hub), Virginia (Spoke), Frankfurt (Spoke) | Phase 9: 13-node, 26-vCPU production cluster. Achieved 106,000 RPS sustained peak with 0.0000% error rate across 2.76M requests with full Edge-to-Core HMAC telemetry. | Production Reference |
 
 ---
 
-## ⚙️ Quickstart Workflow
+## Quickstart Workflow
 
 ### Prerequisites
 * Terraform `>= 1.5.0`

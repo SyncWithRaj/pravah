@@ -1,13 +1,13 @@
-# 🌐 Pravah CDN — Multi-Region EKS Deployment Architecture
+# Pravah CDN — Multi-Region EKS Deployment Architecture
 
-Production-grade Infrastructure as Code (Terraform) deploying **Pravah Video CDN across 3 global AWS EKS Clusters**:
-- 🇮🇳 **Mumbai (`ap-south-1`)**: Central Origin Hub (Postgres, MinIO, Kafka, Transcoders) + APAC Edge
-- 🇺🇸 **North Virginia (`us-east-1`)**: Americas Edge Spoke
-- 🇩🇪 **Frankfurt (`eu-central-1`)**: EMEA Europe Edge Spoke
+Production-grade Infrastructure as Code (Terraform) deploying Pravah Video CDN across 3 global AWS EKS Clusters:
+- **Mumbai (`ap-south-1`)**: Central Origin Hub (Postgres, MinIO, Kafka, Transcoders) and APAC Edge
+- **North Virginia (`us-east-1`)**: Americas Edge Spoke
+- **Frankfurt (`eu-central-1`)**: EMEA Europe Edge Spoke
 
 ---
 
-## 📁 Architecture Files
+## Architecture Files
 
 | File | Description |
 | :--- | :--- |
@@ -21,7 +21,7 @@ Production-grade Infrastructure as Code (Terraform) deploying **Pravah Video CDN
 
 ---
 
-## 🚀 Deployment Instructions
+## Deployment Instructions
 
 ### 1. Initialize Terraform
 ```bash
@@ -52,22 +52,26 @@ aws eks update-kubeconfig --region us-east-1 --name pravah-virginia --alias prav
 aws eks update-kubeconfig --region eu-central-1 --name pravah-frankfurt --alias pravah-frankfurt
 ```
 
-### 5. Deploy Kubernetes Manifests / Helm Chart
+### 5. Deploy Kubernetes Manifests
 ```bash
 # Deploy Core Origin to Mumbai
 kubectl --context pravah-mumbai apply -f ../../k8s/
 
 # Deploy Edge Pods to Virginia & Frankfurt
-kubectl --context pravah-virginia apply -f ../../k8s/30-edge-deployment.yaml -f ../../k8s/31-edge-service.yaml -f ../../k8s/40-edge-hpa.yaml
-kubectl --context pravah-frankfurt apply -f ../../k8s/30-edge-deployment.yaml -f ../../k8s/31-edge-service.yaml -f ../../k8s/40-edge-hpa.yaml
+kubectl --context pravah-virginia apply -f ../../k8s/32-spoke-edge-deployment.yaml -f ../../k8s/31-edge-service.yaml -f ../../k8s/40-edge-hpa.yaml
+kubectl --context pravah-frankfurt apply -f ../../k8s/32-spoke-edge-deployment.yaml -f ../../k8s/31-edge-service.yaml -f ../../k8s/40-edge-hpa.yaml
 ```
 
 ---
 
-## ⚡ Running the 100k RPS Load Benchmark
+## Running Distributed Benchmarks
 
-Connect to the provisioned k6 load generator instance:
+Apply the containerized k6 benchmark jobs directly within the clusters:
 ```bash
-ssh -i loadgen-key.pem ec2-user@<LOAD_GENERATOR_IP>
-TARGET_URL=http://<YOUR_ALB_ENDPOINT> k6 run pravah_100k_benchmark.js
+# Deploy Mumbai k6 job
+kubectl --context pravah-mumbai apply -f ../../k8s/benchmarks/61-k6-mumbai-34k.yaml
+
+# Deploy Virginia and Frankfurt k6 jobs
+kubectl --context pravah-virginia apply -f ../../k8s/benchmarks/62-k6-spoke-36k.yaml
+kubectl --context pravah-frankfurt apply -f ../../k8s/benchmarks/62-k6-spoke-36k.yaml
 ```

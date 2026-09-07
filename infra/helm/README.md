@@ -1,10 +1,10 @@
-# ⎈ Pravah CDN — Helm Package Infrastructure
+# Pravah CDN — Helm Package Infrastructure
 
-This directory contains cloud-native **Helm Charts** for packaging, templating, and deploying the **Pravah Distributed CDN** onto any standard Kubernetes cluster (Amazon EKS, Google GKE, Azure AKS, or local Kind/Minikube).
+This directory contains cloud-native Helm Charts for packaging, templating, and deploying the Pravah Distributed CDN onto any standard Kubernetes cluster (Amazon EKS, Google GKE, Azure AKS, or local Kind/Minikube).
 
 ---
 
-## 📁 Directory Structure
+## Directory Structure
 
 ```
 infra/helm/
@@ -15,7 +15,7 @@ infra/helm/
 
 ---
 
-## 🚀 Installation & Usage
+## Installation & Usage
 
 ### 1. Dry Run / Template Inspection
 ```bash

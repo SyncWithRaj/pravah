@@ -1,10 +1,10 @@
-# 🐳 Pravah CDN — Docker & Container Infrastructure
+# Pravah CDN — Docker and Container Infrastructure
 
-This directory contains production-grade Dockerfiles, Compose configurations, and automated deployment scripts for containerizing and deploying the **Pravah Distributed CDN**.
+This directory contains production Dockerfiles, Compose configurations, and automated deployment scripts for containerizing and deploying the Pravah Distributed CDN.
 
 ---
 
-## 📁 Directory Structure
+## Directory Structure
 
 ```
 infra/docker/
@@ -22,9 +22,9 @@ infra/docker/
 
 ---
 
-## ⚡ BuildKit High-Speed Build Optimization
+## BuildKit High-Speed Build Optimization
 
-All Dockerfiles utilize **Docker BuildKit** with dedicated cache mounts for `pnpm`:
+All Dockerfiles utilize Docker BuildKit with dedicated cache mounts for `pnpm`:
 
 ```dockerfile
 # Uses host-level pnpm cache mount to prevent redundant network downloads
@@ -40,7 +40,7 @@ export COMPOSE_DOCKER_CLI_BUILD=1
 
 ---
 
-## 🚀 Local Development Stacks
+## Local Development Stacks
 
 ### 1. Launch Central Core Dependencies
 ```bash
@@ -63,7 +63,7 @@ Starts:
 
 ---
 
-## 🌐 Production EC2 Deployment
+## Production EC2 Deployment
 
 * **Deploy Core Node:**
   ```bash
