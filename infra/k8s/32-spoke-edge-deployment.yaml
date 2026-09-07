@@ -8,11 +8,11 @@ metadata:
     app.kubernetes.io/component: data-plane
     app.kubernetes.io/part-of: pravah
 spec:
-  replicas: 12
+  replicas: 4
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 4
+      maxSurge: 2
       maxUnavailable: 0
   selector:
     matchLabels:
@@ -56,7 +56,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.name
             - name: EDGE_REGION
-              value: "ap-south-1"
+              value: "spoke-region"
             - name: OTEL_SDK_DISABLED
               value: "true"
           resources:
@@ -64,8 +64,8 @@ spec:
               cpu: "100m"
               memory: "256Mi"
             limits:
-              cpu: "1800m"
-              memory: "2048Mi"
+              cpu: "1000m"
+              memory: "1024Mi"
           readinessProbe:
             httpGet:
               path: /health

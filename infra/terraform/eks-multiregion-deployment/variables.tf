@@ -43,26 +43,26 @@ variable "frankfurt_region" {
 variable "core_instance_type" {
   description = "EC2 Instance type for Central Core Origin & DB nodes"
   type        = string
-  default     = "t3.xlarge"
+  default     = "t3.large"
 }
 
 variable "edge_instance_type" {
   description = "EC2 Instance type for High-Throughput Edge Caching nodes"
   type        = string
-  default     = "c6i.xlarge"
+  default     = "t3.large"
 }
 
 variable "transcoder_instance_type" {
   description = "EC2 Instance type for FFmpeg Transcoder compute nodes"
   type        = string
-  default     = "c6i.2xlarge"
+  default     = "t3.large"
 }
 
 # --- Scaling Limits ---
 variable "core_min_capacity" {
   description = "Minimum nodes in Core Stateful node group"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "core_max_capacity" {
@@ -80,7 +80,7 @@ variable "core_desired_capacity" {
 variable "edge_min_capacity" {
   description = "Minimum nodes in Edge node group per region"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "edge_max_capacity" {
@@ -92,14 +92,14 @@ variable "edge_max_capacity" {
 variable "edge_desired_capacity" {
   description = "Desired nodes in Edge node group per region"
   type        = number
-  default     = 3
+  default     = 2
 }
 
 # --- Load Generator Benchmarking ---
 variable "enable_load_generator" {
-  description = "Deploy a dedicated high-bandwidth EC2 instance with k6 for 100k RPS testing"
+  description = "Deploy a dedicated high-bandwidth EC2 instance with k6 (false since we use K8s Job)"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "load_generator_instance_type" {

@@ -1,4 +1,12 @@
-# 🚀 Pravah CDN — High-Concurrency AWS EKS Load Test Analysis Report
+> [!NOTE]
+> **HISTORICAL BASELINE REPORT (August 31, 2026)**  
+> This document details the early single-region test on 2x `t3.medium` instances (84,645 requests).  
+> For the latest verified **Multi-Region 100k+ RPS Benchmark (2.76M requests, 106,000 RPS sustained, 0.0000% error rate)**, see:  
+> 🏆 **[`benchmarks/reports/multiregion_100k_benchmark_report.md`](./multiregion_100k_benchmark_report.md)**
+
+---
+
+# 🚀 Pravah CDN — High-Concurrency AWS EKS Load Test Analysis Report (Single Region Baseline)
 
 **Date:** August 31, 2026  
 **Target Environment:** Amazon Elastic Kubernetes Service (AWS EKS v1.30)  
@@ -38,7 +46,7 @@
 │                                               │  └─────┬─────┘ └─────┬──────┘  │  │
 │                                               │        │             │         │  │
 │                                               │  ┌─────▼─────────────▼──────┐  │  │
-│                                               │  │ Postgres │ Redis │ Redpanda│ │
+│                                               │  │ Postgres │ Redis │ Redpanda│ │  │
 │                                               │  └──────────────────────────┘  │  │
 │                                               └────────────────────────────────┘  │
 └───────────────────────────────────────────────────────────────────────────────────┘
@@ -66,10 +74,10 @@
 1. **Edge Pod Elasticity**:
    - The 3 Edge pods (`pravah-edge-748cf7cccc-clfn9`, `jnvqv`, `snvs5`) distributed across the worker nodes absorbed **2,000 concurrent Virtual Users** with a **98.48% success rate**.
 2. **Sub-2ms Edge SLA**:
-   - When requests hit warm routes, the edge service responded in as little as **1.77ms**, proving the raw speed of the NestJS fastify/express HTTP pipeline.
+   - When requests hit warm routes, the edge service responded in as little as **1.77ms**, proving the raw speed of the NestJS HTTP pipeline.
 3. **Capacity Ceiling on 2x `t3.medium`**:
    - Because of the AWS account's 8 vCPU limit, the cluster operated on **2x `t3.medium` worker nodes (4 vCPUs total)** hosting 10 Kubernetes pods simultaneously.
-   - For sustained 100k RPS production workloads, scaling the worker pool to 10-20 `c6i.2xlarge` compute-optimized instances will easily support 100,000+ RPS at sub-5ms latency.
+   - For sustained 100k RPS production workloads, see the multi-region cluster report at [`multiregion_100k_benchmark_report.md`](./multiregion_100k_benchmark_report.md).
 
 ---
 
@@ -80,4 +88,3 @@ To prevent ongoing charges on your AWS credits, run the automated destroy script
 ```bash
 bash infra/terraform/eks-load-test/destroy.sh
 ```
-This tears down the EKS cluster, EC2 instances, VPC, and ECR repositories.

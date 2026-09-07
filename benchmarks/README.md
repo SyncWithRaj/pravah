@@ -6,10 +6,11 @@ This directory contains all automated load testing suites, Grafana k6 scenarios,
 
 ## 📊 Benchmark Reports
 
-| Report | Environment | Peak Load / Concurrency | Key Results |
-|---|---|---|---|
-| 📄 [**Local Microservice Benchmarks**](./reports/local_k6_benchmarks.md) | Local Kind / Docker | 200 Concurrent VUs | 100% Success, Cache Hit: 362 RPS, GeoDNS routing |
-| 🚀 [**AWS EKS 100K RPS Load Test**](./reports/aws_eks_100k_load_test.md) | AWS EKS (`ap-south-1`) | 2,000 Concurrent VUs | 84,645 reqs delivered, 98.48% Success, **1.77ms min latency** |
+| Report | Environment | Peak Load / Concurrency | Key Results | Status |
+|---|---|---|---|---|
+| 🏆 [**Multi-Region 100k+ RPS Benchmark Report**](./reports/multiregion_100k_benchmark_report.md) | **AWS EKS Multi-Region (Mumbai, Virginia, Frankfurt)** | **106,000 RPS Sustained Peak** | **2,761,567 requests, 0.0000% Error Rate, Full Edge-to-Core Connectivity** |  **VERIFIED (Current)** |
+| 📄 [**Local Microservice Benchmarks**](./reports/local_k6_benchmarks.md) | Local Kind / Docker | 200 Concurrent VUs | 100% Success, Cache Hit: 362 RPS, GeoDNS routing |  Archived |
+| 📜 [**Historical Single-Region Load Test**](./reports/aws_eks_100k_load_test.md) | AWS EKS (`ap-south-1`, 2x `t3.medium`) | 2,000 Concurrent VUs | 84,645 reqs delivered, 98.48% Success (Old Baseline) |  Superseded |
 
 ---
 
@@ -32,5 +33,5 @@ bash benchmarks/run_all.sh
 
 ---
 
-## ☁️ Running AWS Cloud Load Tests:
-See [`infra/terraform/eks-load-test/`](../infra/terraform/eks-load-test/README.md) for 1-click cloud provisioning and automated k6 runner.
+## ☁️ Running AWS Multi-Region 100k+ RPS Load Tests:
+See [`benchmarks/reports/multiregion_100k_benchmark_report.md`](./reports/multiregion_100k_benchmark_report.md) and [`infra/terraform/eks-multiregion-deployment/`](../infra/terraform/eks-multiregion-deployment/README.md) for full multi-region EKS deployment, cluster topology, and k6 load manifests.

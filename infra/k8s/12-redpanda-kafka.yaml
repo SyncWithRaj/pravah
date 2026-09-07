@@ -83,11 +83,6 @@ spec:
           volumeMounts:
             - name: redpanda-storage
               mountPath: /var/lib/redpanda/data
-  volumeClaimTemplates:
-    - metadata:
-        name: redpanda-storage
-      spec:
-        accessModes: ["ReadWriteOnce"]
-        resources:
-          requests:
-            storage: 10Gi
+      volumes:
+        - name: redpanda-storage
+          emptyDir: {}
