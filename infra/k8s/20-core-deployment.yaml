@@ -52,7 +52,7 @@ spec:
               echo "Kafka is online!"
       containers:
         - name: core-app
-          image: pravah-core-app:latest
+          image: 716659702697.dkr.ecr.ap-south-1.amazonaws.com/pravah-core-app:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000

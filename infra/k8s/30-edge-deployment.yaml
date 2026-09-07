@@ -38,7 +38,7 @@ spec:
                 topologyKey: "kubernetes.io/hostname"
       containers:
         - name: edge-app
-          image: pravah-edge-app:latest
+          image: 716659702697.dkr.ecr.ap-south-1.amazonaws.com/pravah-edge-app:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3001
