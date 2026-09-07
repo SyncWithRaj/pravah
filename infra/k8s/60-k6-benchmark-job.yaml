@@ -1,0 +1,87 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pravah-k6-benchmark-script
+  namespace: pravah-system
+data:
+  benchmark.js: |
+    import http from 'k6/http';
+    import { check } from 'k6';
+    import { Rate, Trend } from 'k6/metrics';
+
+    const errorRate = new Rate('errors');
+    const edgeLatency = new Trend('health_latency_ms', true);
+
+    const TARGET_URL = __ENV.TARGET_URL || 'http://pravah-edge-service.pravah-system.svc.cluster.local:3001';
+
+    export const options = {
+      scenarios: {
+        ramp_to_100k: {
+          executor: 'ramping-arrival-rate',
+          startRate: 1000,
+          timeUnit: '1s',
+          preAllocatedVUs: 1000,
+          maxVUs: 10000,
+          stages: [
+            { duration: '15s', target: 10000 },   // Warm-up: 10k RPS
+            { duration: '20s', target: 50000 },   // Ramp: 50k RPS
+            { duration: '30s', target: 100000 },  // 🚀 PEAK: 100,000 RPS Sustained
+            { duration: '15s', target: 50000 },   // Cool-down
+            { duration: '10s', target: 5000 },    // Wind-down
+          ],
+        },
+      },
+      thresholds: {
+        http_req_duration: ['p(95)<30', 'p(99)<75'],
+        errors: ['rate<0.01'],
+      },
+    };
+
+    export default function () {
+      const res = http.get(`${TARGET_URL}/health`, {
+        headers: { 'Connection': 'keep-alive' },
+      });
+
+      const success = check(res, {
+        'status is 200': (r) => r.status === 200,
+      });
+
+      errorRate.add(!success);
+      edgeLatency.add(res.timings.duration);
+    }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: pravah-100k-benchmark
+  namespace: pravah-system
+spec:
+  backoffLimit: 1
+  template:
+    metadata:
+      labels:
+        app: pravah-100k-benchmark
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:latest
+          imagePullPolicy: IfNotPresent
+          command: ["k6", "run", "/scripts/benchmark.js"]
+          env:
+            - name: TARGET_URL
+              value: "http://pravah-edge-service.pravah-system.svc.cluster.local:3001"
+          resources:
+            requests:
+              cpu: "2000m"
+              memory: "2048Mi"
+            limits:
+              cpu: "8000m"
+              memory: "8192Mi"
+          volumeMounts:
+            - name: script-vol
+              mountPath: /scripts
+      volumes:
+        - name: script-vol
+          configMap:
+            name: pravah-k6-benchmark-script

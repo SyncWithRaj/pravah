@@ -1,0 +1,26 @@
+# ============================================================================
+# Pravah CDN — Multi-Region EKS Architecture Configuration
+# ============================================================================
+
+environment         = "production"
+cluster_name_prefix = "pravah"
+kubernetes_version  = "1.30"
+
+# AWS Regions
+mumbai_region    = "ap-south-1"      # Hub: Origin Core, DBs, Transcoder, APAC Edge
+virginia_region  = "us-east-1"       # Spoke: Americas Edge CDN
+frankfurt_region = "eu-central-1"    # Spoke: EMEA Europe Edge CDN
+
+# Node Instance Types
+core_instance_type       = "t3.xlarge"   # Control Plane & DBs
+edge_instance_type       = "c6i.xlarge"  # High-throughput in-memory caching
+transcoder_instance_type = "c6i.2xlarge" # Compute-heavy FFmpeg ladders
+
+# Auto-Scaling Capacities (Per Edge Region)
+edge_min_capacity     = 2
+edge_desired_capacity = 3
+edge_max_capacity     = 50            # Scales up to 50 nodes per region under load
+
+# 100k RPS Load Generator
+enable_load_generator        = true
+load_generator_instance_type = "c6i.4xlarge"
