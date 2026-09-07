@@ -1,0 +1,26 @@
+info:
+  name: upload-init
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://localhost:3000/api/v1/upload/init
+  body:
+    type: json
+    data: |-
+      {
+        "name": "microservice-test-mega3.txt",
+        "mimeType": "text/plain",
+        "totalSize": 2800000,
+        "totalChunks": 1
+      }
+  auth:
+    type: bearer
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4ZGVmNzFmYy1iNmQ5LTQ0NTMtOTNjYi1lYzg4ZDQ5ZjBlNmUiLCJlbWFpbCI6InJhakBwcmF2YWguY29tIiwiaWF0IjoxNzg2MjEzMjQ5LCJleHAiOjE3ODYyMTQxNDl9.I25wmEl1wcjy6TJelOckmW2XKX7_ZUOz4WGQ3dZb5rc
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

@@ -6,6 +6,7 @@ This document serves as the primary visual architecture guide for the Distribute
 > * **Diagrams 2–7** represent core mechanics implemented first within a **Modular Monolith** (Phases 1–4).
 > * **Diagram 1** represents the **Target Microservices Architecture** achieved after the Phase 5 refactor.
 > * **Diagrams 8–10** cover Observability, Hardening (DLQ/Retries), and Fault Tolerance.
+> * 🔗 **End-to-End Request Flow:** For the complete HTTP download execution, GeoDNS routing, cache hit/miss resolution, stampede locks, and telemetry sequence, see [**`architecture_2.0.md`**](architecture_2.0.md).
 
 ---
 

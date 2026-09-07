@@ -4,7 +4,7 @@ This directory contains the production Terraform infrastructure and automated lo
 
 ---
 
-## 📊 Benchmark Results
+## Benchmark Results
 
 A detailed analysis report is available in [`BENCHMARK_ANALYSIS.md`](./BENCHMARK_ANALYSIS.md).
 
@@ -17,7 +17,7 @@ A detailed analysis report is available in [`BENCHMARK_ANALYSIS.md`](./BENCHMARK
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌──────────────────────────────────────────────────────┐
@@ -37,9 +37,9 @@ A detailed analysis report is available in [`BENCHMARK_ANALYSIS.md`](./BENCHMARK
 
 ---
 
-## 🚀 Quick Start Commands
+## Quickstart Commands
 
-### 1. Run Deployment & Test (1-Click)
+### 1. Run Deployment & Test
 ```bash
 bash deploy_and_test.sh
 ```

@@ -1,4 +1,4 @@
-# 🚀 Pravah CDN — High-Concurrency AWS EKS Load Test Analysis Report
+# Pravah CDN — High-Concurrency AWS EKS Load Test Analysis Report
 
 **Date:** August 31, 2026  
 **Target Environment:** Amazon Elastic Kubernetes Service (AWS EKS v1.30)  
@@ -13,10 +13,10 @@
 | Benchmark Metric | Measured Result | Evaluation |
 |---|---|---|
 | **Total Completed Requests** | **84,645 requests** | High Volume |
-| **Successful Requests (HTTP 200)** | **83,360 requests (98.48%)** | ✅ **SLA Passed (>98%)** |
+| **Successful Requests (HTTP 200)** | **83,360 requests (98.48%)** | **SLA Passed (>98%)** |
 | **Total Data Delivered** | **993 MB (~1 Gigabyte)** | High Throughput |
 | **Peak Virtual Users (VUs)** | **2,000 Concurrent VUs** | Stress Maximum |
-| **Minimum Edge Latency** | **1.77 ms** | ⚡ **Ultra-Low Edge Speed** |
+| **Minimum Edge Latency** | **1.77 ms** | **Ultra-Low Edge Speed** |
 | **Median Edge Latency (p50)** | **536.49 ms** | Under 2,000 VU load |
 | **95th Percentile Latency (p95)** | **862.17 ms** | Within Cloud Envelope |
 

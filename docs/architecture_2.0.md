@@ -1,8 +1,9 @@
 # Pravah Distributed CDN — Complete HTTP Download Request Flow & Architecture Specification
 
-> **File:** `architechture.md`  
+> **File:** `docs/architecture_2.0.md`  
 > **Status:** OFFICIAL SYSTEM SPECIFICATION & ARCHITECTURE REFERENCE  
 > **Scope:** Multi-Region Ingress, Geo-Routing, Edge Cache Hits/Misses, Tiered Peer Fills, Kafka Event Streaming, WebSockets, and Observability  
+> 🔗 **System Topology & Roadmap:** For the high-level microservices topology, sequence diagrams, and evolutionary roadmap, see [**`architecture.md`**](architecture.md).
 
 ---
 

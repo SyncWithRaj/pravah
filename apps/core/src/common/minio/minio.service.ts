@@ -367,9 +367,8 @@ export class MinioService implements OnModuleInit {
         : undefined,
     });
 
-    const client = (this.presignerClient || this.s3Client) as unknown as Parameters<
-      typeof getSignedUrl
-    >[0];
+    const client = (this.presignerClient ||
+      this.s3Client) as unknown as Parameters<typeof getSignedUrl>[0];
 
     return getSignedUrl(client, command, {
       expiresIn: expiresInSeconds,
