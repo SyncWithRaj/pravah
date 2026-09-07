@@ -6,6 +6,7 @@ import { ReplicationModule } from './replication/replication.module';
 import { HeartbeatModule } from './heartbeat/heartbeat.module';
 import { MetricsModule } from './metrics/metrics.module';
 import { KafkaModule } from './kafka/kafka.module';
+import { AppController } from './app.controller';
 
 @Module({
   imports: [
@@ -20,5 +21,6 @@ import { KafkaModule } from './kafka/kafka.module';
     HeartbeatModule,
     MetricsModule,
   ],
+  controllers: [AppController],
 })
 export class AppModule {}
