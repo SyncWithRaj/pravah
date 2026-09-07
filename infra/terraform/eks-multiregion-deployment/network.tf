@@ -17,7 +17,7 @@ resource "aws_vpc" "mumbai" {
   enable_dns_support   = true
 
   tags = {
-    Name                                                       = "${var.cluster_name_prefix}-vpc-mumbai"
+    Name                                                      = "${var.cluster_name_prefix}-vpc-mumbai"
     "kubernetes.io/cluster/${var.cluster_name_prefix}-mumbai" = "shared"
   }
 }
@@ -40,9 +40,9 @@ resource "aws_subnet" "mumbai_public" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name                                                       = "${var.cluster_name_prefix}-mumbai-public-${count.index + 1}"
+    Name                                                      = "${var.cluster_name_prefix}-mumbai-public-${count.index + 1}"
     "kubernetes.io/cluster/${var.cluster_name_prefix}-mumbai" = "shared"
-    "kubernetes.io/role/elb"                                   = "1"
+    "kubernetes.io/role/elb"                                  = "1"
   }
 }
 
@@ -54,9 +54,9 @@ resource "aws_subnet" "mumbai_private" {
   availability_zone = data.aws_availability_zones.mumbai.names[count.index]
 
   tags = {
-    Name                                                       = "${var.cluster_name_prefix}-mumbai-private-${count.index + 1}"
+    Name                                                      = "${var.cluster_name_prefix}-mumbai-private-${count.index + 1}"
     "kubernetes.io/cluster/${var.cluster_name_prefix}-mumbai" = "shared"
-    "kubernetes.io/role/internal-elb"                          = "1"
+    "kubernetes.io/role/internal-elb"                         = "1"
   }
 }
 
@@ -136,7 +136,7 @@ resource "aws_vpc" "virginia" {
   enable_dns_support   = true
 
   tags = {
-    Name                                                         = "${var.cluster_name_prefix}-vpc-virginia"
+    Name                                                        = "${var.cluster_name_prefix}-vpc-virginia"
     "kubernetes.io/cluster/${var.cluster_name_prefix}-virginia" = "shared"
   }
 }
@@ -159,9 +159,9 @@ resource "aws_subnet" "virginia_public" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name                                                         = "${var.cluster_name_prefix}-virginia-public-${count.index + 1}"
+    Name                                                        = "${var.cluster_name_prefix}-virginia-public-${count.index + 1}"
     "kubernetes.io/cluster/${var.cluster_name_prefix}-virginia" = "shared"
-    "kubernetes.io/role/elb"                                     = "1"
+    "kubernetes.io/role/elb"                                    = "1"
   }
 }
 
@@ -173,9 +173,9 @@ resource "aws_subnet" "virginia_private" {
   availability_zone = data.aws_availability_zones.virginia.names[count.index]
 
   tags = {
-    Name                                                         = "${var.cluster_name_prefix}-virginia-private-${count.index + 1}"
+    Name                                                        = "${var.cluster_name_prefix}-virginia-private-${count.index + 1}"
     "kubernetes.io/cluster/${var.cluster_name_prefix}-virginia" = "shared"
-    "kubernetes.io/role/internal-elb"                            = "1"
+    "kubernetes.io/role/internal-elb"                           = "1"
   }
 }
 
@@ -255,7 +255,7 @@ resource "aws_vpc" "frankfurt" {
   enable_dns_support   = true
 
   tags = {
-    Name                                                          = "${var.cluster_name_prefix}-vpc-frankfurt"
+    Name                                                         = "${var.cluster_name_prefix}-vpc-frankfurt"
     "kubernetes.io/cluster/${var.cluster_name_prefix}-frankfurt" = "shared"
   }
 }
@@ -278,9 +278,9 @@ resource "aws_subnet" "frankfurt_public" {
   map_public_ip_on_launch = true
 
   tags = {
-    Name                                                          = "${var.cluster_name_prefix}-frankfurt-public-${count.index + 1}"
+    Name                                                         = "${var.cluster_name_prefix}-frankfurt-public-${count.index + 1}"
     "kubernetes.io/cluster/${var.cluster_name_prefix}-frankfurt" = "shared"
-    "kubernetes.io/role/elb"                                      = "1"
+    "kubernetes.io/role/elb"                                     = "1"
   }
 }
 
@@ -292,9 +292,9 @@ resource "aws_subnet" "frankfurt_private" {
   availability_zone = data.aws_availability_zones.frankfurt.names[count.index]
 
   tags = {
-    Name                                                          = "${var.cluster_name_prefix}-frankfurt-private-${count.index + 1}"
+    Name                                                         = "${var.cluster_name_prefix}-frankfurt-private-${count.index + 1}"
     "kubernetes.io/cluster/${var.cluster_name_prefix}-frankfurt" = "shared"
-    "kubernetes.io/role/internal-elb"                             = "1"
+    "kubernetes.io/role/internal-elb"                            = "1"
   }
 }
 
