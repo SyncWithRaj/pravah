@@ -1,0 +1,27 @@
+info:
+  name: upload-versions
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http:localhost:3000/api/v1/upload/0ef01cdc-1119-44bd-8b3d-ccfd2a20f5b0/versions
+  body:
+    type: json
+    data: |-
+      {
+        "name": "master-testv2.txt",
+        "mimeType": "text/plain",
+        "totalSize": 2800000,
+        "totalChunks": 1
+      }
+  auth:
+    type: bearer
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4ZGVmNzFmYy1iNmQ5LTQ0NTMtOTNjYi1lYzg4ZDQ5ZjBlNmUiLCJlbWFpbCI6InJhakBwcmF2YWguY29tIiwiaWF0IjoxNzg1NjgxMjAwLCJleHAiOjE3ODU2ODIxMDB9.osigytB4wEWMnhdH5HlbGP5PwLSwX3Q_5OGhWgq84Gw
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+​

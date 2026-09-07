@@ -1,0 +1,22 @@
+info:
+  name: direct-minio-download
+  type: http
+  seq: 1
+
+http:
+  method: GET
+  url: http://localhost:3000/api/v1/download/5c109f9e-203e-4b58-a00c-a8824575430d
+  headers:
+    - name: If-None-Match
+      value: f5d4959a8d1d7aa2bf09e22806dc343e
+    - name: x-test-client-region
+      value: ap-northeast-1
+  auth:
+    type: bearer
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4ZGVmNzFmYy1iNmQ5LTQ0NTMtOTNjYi1lYzg4ZDQ5ZjBlNmUiLCJlbWFpbCI6InJhakBwcmF2YWguY29tIiwiaWF0IjoxNzg2MTgxMjE2LCJleHAiOjE3ODYxODIxMTZ9.PN6xR1gMH3KQ6oT3IPJPh9fZcThwL_MUM9Tw3niNGo8
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 0

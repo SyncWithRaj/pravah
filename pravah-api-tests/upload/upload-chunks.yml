@@ -1,0 +1,39 @@
+info:
+  name: upload-chunks
+  type: http
+  seq: 1
+
+http:
+  method: PUT
+  url: http://localhost:3000/api/v1/upload/2e6ec556-1578-4936-8a6e-354631e1e818/chunk/0
+  body:
+    type: multipart-form
+    data:
+      - name: fileId
+        type: text
+        value: 391a57c7-71fa-436d-8201-5be56a5c6001
+        contentType: Text
+        disabled: true
+      - name: chunkIndex
+        type: text
+        value: "0"
+        contentType: Text
+        disabled: true
+      - name: checksum
+        type: text
+        value: skip
+        contentType: Text
+      - name: file
+        type: file
+        value:
+          - test-files/test.txt
+        contentType: File
+  auth:
+    type: bearer
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI4ZGVmNzFmYy1iNmQ5LTQ0NTMtOTNjYi1lYzg4ZDQ5ZjBlNmUiLCJlbWFpbCI6InJhakBwcmF2YWguY29tIiwiaWF0IjoxNzg2MjE0MjQ4LCJleHAiOjE3ODYyMTUxNDh9.RP-vvgmFpI3KxhtQriLJ_jOKpRjp9rus_DtHPQJuY38
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5

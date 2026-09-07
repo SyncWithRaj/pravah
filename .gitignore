@@ -35,10 +35,6 @@ Thumbs.db
 generated/
 CREDENTIALS.txt
 
-# API Testing
-pravah-api-tests/
-TODO.md
-
 # Terraform
 **/.terraform/
 *.tfstate

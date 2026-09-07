@@ -1,0 +1,22 @@
+info:
+  name: health-check
+  type: http
+  seq: 1
+
+http:
+  method: POST
+  url: http://localhost:3000/api/v1/admin/health/heartbeat
+  body:
+    type: json
+    data: |-
+      {
+        "edgeId": "18ff617f-0352-4fca-9ebe-d0c7c4c2a546"
+      }
+  auth: inherit
+
+settings:
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+​
