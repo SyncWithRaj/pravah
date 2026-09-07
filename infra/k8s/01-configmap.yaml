@@ -27,6 +27,8 @@ data:
   MINIO_PORT: "9000"
   MINIO_BUCKET_NAME: "pravah-origin"
   MINIO_USE_SSL: "false"
+  MINIO_PUBLIC_ENDPOINT: "localhost"
+  MINIO_PUBLIC_PORT: "9000"
   
   # Edge Node Parameters
   DEFAULT_EDGE_REGION: "ap-south-1"
