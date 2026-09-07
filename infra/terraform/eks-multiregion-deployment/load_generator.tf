@@ -150,7 +150,7 @@ resource "aws_instance" "load_generator" {
     };
 
     export default function () {
-      const res = http.get(`$${TARGET_URL}/metrics`, {
+      const res = http.get(`$${TARGET_URL}/health`, {
         headers: { 'Connection': 'keep-alive' },
       });
 
