@@ -1,98 +1,94 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Pravah CDN — Core Control Plane API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+The Core service (`apps/core`) is the central control plane, origin coordinator, and metadata authority of the Pravah Distributed CDN. It manages user authentication, file lifecycle orchestration, origin object storage, background video transcoding, inter-service security, and regional edge health monitoring.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+---
 
-## Description
+## Architecture and Core Responsibilities
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
-
-## Project setup
-
-```bash
-$ pnpm install
+```
+                                  INCOMING TRAFFIC
+                                         │
+                                         ▼
+                                   Nginx / NLB (:3000)
+                                         │
+                                         ▼
+                            ┌────────────────────────┐
+                            │    UnifiedAuthGuard    │
+                            │ (JWT / API Key / HMAC) │
+                            └────────────┬───────────┘
+                                         │
+                 ┌───────────────────────┼───────────────────────┐
+                 │                       │                       │
+                 ▼                       ▼                       ▼
+          Upload Pipeline          Metadata & CDN          Video Transcoder
+          (Resumable Chunks)      Routing (Haversine)     (BullMQ + FFmpeg)
+                 │                       │                       │
+                 ▼                       ▼                       ▼
+          MinIO / S3 Origin       PostgreSQL DB           HLS Adaptive Slices
+          (pravah-origin)         (Prisma ORM)            (1080p / 720p / 480p)
 ```
 
-## Compile and run the project
+---
+
+## Subsystems and Capabilities
+
+### 1. Cryptographic Tri-Mode Authentication & RBAC
+* **JSON Web Tokens (JWT):** User sessions with access and refresh tokens (`/api/v1/auth/*`).
+* **API Key Engine:** High-speed machine-to-machine authentication using SHA-256 one-way hashing with constant-time buffer validation (`crypto.timingSafeEqual`).
+* **Inter-Service HMAC Signatures:** Edge-to-Core requests must provide an `X-Service-Signature` header computed via HMAC-SHA256 with timestamp replay protection (maximum 5-minute clock drift).
+* **Hierarchical RBAC:** Strict 4-tier role hierarchy (`ADMIN > STREAMER > VIEWER > USER`) enforced via `@Roles()` decorators and `RolesGuard`.
+
+### 2. Resumable Chunked Ingestion
+* Handles large binary uploads divided into 5MB chunks.
+* Tracks chunk arrival idempotently in PostgreSQL, enabling upload resumption without restarting from byte zero.
+* Assembles chunks in MinIO/S3 and computes a full-file SHA-256 integrity checksum upon completion.
+
+### 3. Adaptive Bitrate Video Transcoding (HLS)
+* Detects video content types (`video/*`) and dispatches background processing jobs to a BullMQ Redis queue.
+* Spawns FFmpeg workers to transcode raw video into multi-bitrate renditions (1080p, 720p, 480p, 360p, 240p, 144p) with dynamic no-upscaling logic.
+* Packages streams into adaptive HLS master playlists (`master.m3u8`) and 4-second MPEG-TS segments (`.ts`).
+
+### 4. Geo-Aware CDN Routing
+* Implements the Spherical Haversine distance formula to resolve the physically closest healthy Edge node based on client IP coordinates.
+* Issues an **HTTP 302 Found** redirect pointing the client directly to the chosen Edge PoP Fastify ingress.
+
+### 5. Active Node Health Scanner
+* Edge nodes transmit authenticated heartbeats to `POST /common/health-check/heartbeat` every 10 seconds.
+* A background cron scanner evaluates active nodes. Nodes missing consecutive cycles are marked `DEGRADED`, then `DOWN`, and automatically evicted from the candidate routing pool and Consistent Hashing Ring.
+
+---
+
+## API Endpoints Reference
+
+| Method | Endpoint | Protection | Description |
+| :--- | :--- | :--- | :--- |
+| `POST` | `/api/v1/auth/register` | Public | Register new user account |
+| `POST` | `/api/v1/auth/login` | Public | Authenticate user, verify password hash, return JWT |
+| `POST` | `/api/v1/auth/refresh` | Public | Exchange refresh token for new access token |
+| `POST` | `/api/v1/upload/init` | JWT / API Key | Initialize resumable multipart upload session |
+| `PUT`  | `/api/v1/upload/:id/chunk/:index` | JWT / API Key | Stream individual binary chunk to storage |
+| `POST` | `/api/v1/upload/complete` | JWT / API Key | Finalize assembly, verify checksum, trigger Kafka events |
+| `GET`  | `/api/v1/download/:fileId` | Public / Signed | Geo-route client to nearest healthy edge via HTTP 302 |
+| `GET`  | `/api/v1/metadata/files/:fileId` | JWT / API Key | Retrieve object metadata, versions, and replication state |
+| `POST` | `/api/v1/common/health-check/heartbeat` | HMAC-SHA256 | Process edge node health report |
+| `GET`  | `/api/v1/metrics` | Public | Export Prometheus control plane metrics |
+
+---
+
+## Local Development Execution
 
 ```bash
-# development
-$ pnpm run start
+# 1. Install dependencies
+pnpm install
 
-# watch mode
-$ pnpm run start:dev
+# 2. Run Prisma database migrations
+pnpm --filter core exec prisma migrate dev
 
-# production mode
-$ pnpm run start:prod
+# 3. Seed initial admin user and edge nodes
+pnpm --filter core exec prisma db seed
+
+# 4. Start Core API in development watch mode
+pnpm --filter core start:dev
 ```
-
-## Run tests
-
-```bash
-# unit tests
-$ pnpm run test
-
-# e2e tests
-$ pnpm run test:e2e
-
-# test coverage
-$ pnpm run test:cov
-```
-
-## Deployment
-
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
-
-```bash
-$ pnpm install -g @nestjs/mau
-$ mau deploy
-```
-
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
-
-## Resources
-
-Check out a few resources that may come in handy when working with NestJS:
-
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
-
-## Support
-
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
-
-## Stay in touch
-
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
-
-## License
-
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Service listens on `http://localhost:3000`.
