@@ -156,7 +156,10 @@ export class MetadataService {
       `[Cascade Delete] Deleted file ${fileId} from MinIO & PostgreSQL and broadcasted cache.invalidate over Kafka`,
     );
 
-    return { success: true, message: 'File deleted completely and cache invalidated' };
+    return {
+      success: true,
+      message: 'File deleted completely and cache invalidated',
+    };
   }
 
   async findInternalVersion(fileId: string, versionNumber: number) {
