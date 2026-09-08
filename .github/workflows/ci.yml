@@ -73,7 +73,7 @@ jobs:
         run: pnpm --filter core exec prisma generate
 
       - name: Run Test Suites
-        run: pnpm run test -- --ci --maxWorkers=2
+        run: pnpm -r test --ci
 
   build-artifacts:
     name: Monorepo Build Verification
