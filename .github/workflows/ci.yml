@@ -7,61 +7,163 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-test:
-    name: Build & Test Node.js Services
+  code-quality:
+    name: Code Quality & Linting
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install pnpm
+      - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
 
-      - name: Setup Node.js
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'pnpm'
           cache-dependency-path: './pnpm-lock.yaml'
 
-      - name: Install Dependencies
+      - name: Install Monorepo Dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Generate Prisma Client
         run: pnpm --filter core exec prisma generate
 
-      - name: Run Linter & Formatter
-        run: pnpm run fix
+      - name: Check Formatting (Prettier)
+        run: pnpm run format:check
 
-      - name: Build Application
-        run: pnpm run build
+      - name: Check Code Quality (ESLint)
+        run: pnpm run lint
 
-  terraform-validate:
-    name: Validate Terraform Infrastructure
+  unit-tests:
+    name: Unit & Integration Tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: infra/terraform
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Setup Terraform
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: './pnpm-lock.yaml'
+
+      - name: Install Monorepo Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm --filter core exec prisma generate
+
+      - name: Run Test Suites
+        run: pnpm run test -- --ci --maxWorkers=2
+
+  build-artifacts:
+    name: Monorepo Build Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: './pnpm-lock.yaml'
+
+      - name: Install Monorepo Dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm --filter core exec prisma generate
+
+      - name: Build Core & Edge Applications
+        run: pnpm run build
+
+      - name: Validate Compiled Output Bundles
+        run: |
+          test -f apps/core/dist/src/main.js || (echo "Missing apps/core/dist/src/main.js" && exit 1)
+          test -f apps/edge/dist/main.js || (echo "Missing apps/edge/dist/main.js" && exit 1)
+          echo "Monorepo build bundles verified successfully."
+
+  terraform-validate:
+    name: Terraform Validation (${{ matrix.config }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - ec2-multi-region
+          - eks-load-test
+          - eks-multiregion-deployment
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform CLI
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.15.6
 
-      - name: Check Terraform Formatting
-        run: terraform fmt -check -recursive
+      - name: Check Global Terraform Formatting
+        run: terraform fmt -check -recursive infra/terraform
 
-      - name: Initialize Terraform (Backend-less)
-        run: terraform init -backend=false
+      - name: Initialize Terraform Config (Backend-less)
+        run: terraform -chdir=infra/terraform/${{ matrix.config }} init -backend=false
 
-      - name: Validate Terraform Code
-        run: terraform validate
+      - name: Validate Terraform Syntax & Configuration
+        run: terraform -chdir=infra/terraform/${{ matrix.config }} validate
+
+  docker-build:
+    name: Docker Build Verification (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: core
+            file: infra/docker/Dockerfile.core
+          - service: edge
+            file: infra/docker/Dockerfile.edge
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker Container (${{ matrix.service }})
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          push: false
+          tags: pravah-${{ matrix.service }}:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
