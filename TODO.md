@@ -54,6 +54,18 @@
 - [x] **Per-Version Stampede Lock:** Refined mutex keys to `lock:stampede:{fileId}:v{version}` preventing multi-version thundering herds.
 - [x] **Hybrid NVMe/Disk + Redis Storage:** Store large binary files and `.ts` video chunks on NVMe/SSD disk while using Redis RAM for hot metadata, ETags, and LRU indexes.
 
+### 4. Zero-Copy Reverse Proxy Edge Acceleration (Phase 9) [COMPLETED]
+- [x] **Linux Kernel Directives:** Configured `sendfile on;`, `tcp_nopush on;`, and `tcp_nodelay on;` for zero user-space memory copies.
+- [x] **Segment Cache Zone:** 20GB persistent disk cache zone (`SEGMENT_CACHE`) for `.ts`, `.m4s`, and `.mp4` chunks.
+- [x] **Manifest Microcaching:** 1-second microcache zone (`MANIFEST_CACHE`) for dynamic `.m3u8` playlists preventing live stream stampedes.
+- [x] **Upstream Keep-Alive Pooling:** Persistent HTTP/1.1 connection pooling to NestJS Edge Service on ports 3001/4001.
+- [x] **Alpine Linux Packaging:** Production `Dockerfile` with automated `nginx -t` build-time validation and health checks.
+- [x] **CI Pipeline Matrix:** Integrated `nginx-edge` container build and validation into `.github/workflows/ci.yml`.
+- [x] **Request Flow Architecture:** Documented request lifecycle, sequence diagrams, and data plane vs control plane separation in `docs/designs/edge_nginx_reverse_proxy_flow.md`.
+- [x] **Kubernetes Sidecar Integration:** Deployed `edge-proxy` sidecar container in `infra/k8s/30-edge-deployment.yaml` and `32-spoke-edge-deployment.yaml`, updated `pravah-edge-service` to port 80, and wired Ingress routes.
+- [x] **Fastify Reply Compatibility:** Enhanced `EdgeContentController` with universal reply helpers (`setHeader` and `sendResponse`) for safe high-throughput byte streaming under Fastify.
+- [x] **Live Container Verification:** Validated cache hits, cache misses, and manifest microcaching on live containers (`pravah-edge`, `pravah-edge-proxy`, `pravah-edge-redis`).
+
 ---
 
 ## Target Architecture: Scaling to 1,000,000 Requests/Second (1M RPS)

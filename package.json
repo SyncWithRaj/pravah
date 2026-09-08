@@ -13,7 +13,8 @@
     "ci": "pnpm run format:check && pnpm run lint && pnpm run build && pnpm run test",
     "build:all": "pnpm run fix && pnpm run build",
     "dashboard": "python3 -m http.server 8080 --directory dashboard",
-    "benchmark": "bash benchmarks/run_all.sh"
+    "benchmark": "bash benchmarks/run_all.sh",
+    "test:proxy": "bash scripts/dev/test_nginx_proxy.sh"
   }
 }
 
