@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI
 
 on:
   push:
@@ -7,14 +7,22 @@ on:
   pull_request:
     branches:
       - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-and-test:
-    name: Build & Test Node.js Services
+  code-quality:
+    name: Code Quality
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install pnpm
@@ -29,39 +37,136 @@ jobs:
           cache: 'pnpm'
           cache-dependency-path: './pnpm-lock.yaml'
 
-      - name: Install Dependencies
+      - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Generate Prisma Client
+      - name: Generate Prisma client
         run: pnpm --filter core exec prisma generate
 
-      - name: Run Linter & Formatter
-        run: pnpm run fix
+      - name: Check formatting (Prettier)
+        run: pnpm run format:check
 
-      - name: Build Application
-        run: pnpm run build
+      - name: Run linter (ESLint)
+        run: pnpm run lint
 
-  terraform-validate:
-    name: Validate Terraform Infrastructure
+  unit-tests:
+    name: Unit Tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: infra/terraform
 
     steps:
-      - name: Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Terraform
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: './pnpm-lock.yaml'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter core exec prisma generate
+
+      - name: Run test suites (Jest)
+        run: pnpm -r test --ci
+
+  build-verification:
+    name: Build Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: './pnpm-lock.yaml'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter core exec prisma generate
+
+      - name: Build applications
+        run: pnpm run build
+
+      - name: Verify build artifacts
+        run: |
+          test -f apps/core/dist/src/main.js || (echo "Missing apps/core/dist/src/main.js" && exit 1)
+          test -f apps/edge/dist/main.js || (echo "Missing apps/edge/dist/main.js" && exit 1)
+          echo "Build artifacts verified successfully."
+
+  terraform-validate:
+    name: Terraform (${{ matrix.config }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - ec2-multi-region
+          - eks-load-test
+          - eks-multiregion-deployment
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform CLI
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.15.6
 
-      - name: Check Terraform Formatting
-        run: terraform fmt -check -recursive
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive infra/terraform
 
-      - name: Initialize Terraform (Backend-less)
-        run: terraform init -backend=false
+      - name: Initialize Terraform
+        run: terraform -chdir=infra/terraform/${{ matrix.config }} init -backend=false
 
-      - name: Validate Terraform Code
-        run: terraform validate
+      - name: Validate Terraform
+        run: terraform -chdir=infra/terraform/${{ matrix.config }} validate
+
+  docker-build:
+    name: Docker (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: core
+            file: infra/docker/Dockerfile.core
+          - service: edge
+            file: infra/docker/Dockerfile.edge
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Verify container build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.file }}
+          push: false
+          tags: pravah-${{ matrix.service }}:ci-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

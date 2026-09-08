@@ -5,9 +5,12 @@
     "core": "pnpm --filter core start:dev",
     "edge": "pnpm --filter edge start:dev",
     "format": "pnpm --filter core format",
+    "format:check": "pnpm --filter core exec prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "lint": "pnpm --filter core lint",
     "fix": "pnpm --filter core format && pnpm --filter core lint",
+    "test": "pnpm -r test",
     "build": "pnpm -r build",
+    "ci": "pnpm run format:check && pnpm run lint && pnpm run build && pnpm run test",
     "build:all": "pnpm run fix && pnpm run build",
     "dashboard": "python3 -m http.server 8080 --directory dashboard",
     "benchmark": "bash benchmarks/run_all.sh"
