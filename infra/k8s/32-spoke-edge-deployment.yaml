@@ -89,8 +89,38 @@ spec:
           volumeMounts:
             - name: edge-ram-cache
               mountPath: /tmp/pravah-edge-cache
+        - name: edge-proxy
+          image: 716659702697.dkr.ecr.ap-south-1.amazonaws.com/pravah-edge-proxy:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+              name: http-proxy
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: edge-proxy-cache
+              mountPath: /var/cache/nginx
       volumes:
         - name: edge-ram-cache
           emptyDir:
             medium: Memory
             sizeLimit: 1Gi
+        - name: edge-proxy-cache
+          emptyDir: {}

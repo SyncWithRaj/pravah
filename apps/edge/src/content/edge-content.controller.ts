@@ -13,7 +13,7 @@ import {
   ParseIntPipe,
   HttpStatus,
 } from '@nestjs/common';
-import { Response, Request } from 'express';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { EdgeCacheService, CacheMetadata } from '../cache/cache.service';
@@ -66,12 +66,33 @@ export class EdgeContentController {
     this.peerMaxAttempts = this.configService.get<number>('PEER_MAX_ATTEMPTS', 3);
   }
 
+  private setHeader(res: FastifyReply, name: string, value: string | number): void {
+    if (typeof res.header === 'function') {
+      res.header(name, value);
+    } else if (typeof (res as any).setHeader === 'function') {
+      (res as any).setHeader(name, value);
+    } else if ((res as any).raw && typeof (res as any).raw.setHeader === 'function') {
+      (res as any).raw.setHeader(name, value);
+    }
+  }
+
+  private sendResponse(res: FastifyReply, status: HttpStatus, payload: any): void {
+    if (typeof res.status === 'function' && typeof res.send === 'function') {
+      res.status(status).send(payload);
+    } else if (typeof res.status === 'function' && typeof (res as any).end === 'function') {
+      (res as any).status(status).end(payload);
+    } else if ((res as any).raw) {
+      (res as any).raw.statusCode = status;
+      (res as any).raw.end(payload);
+    }
+  }
+
   @Get(':fileId/hls/*')
   async getHlsContent(
     @Param('fileId') fileId: string,
     @Query('v') versionQuery: string,
-    @Req() req: Request,
-    @Res() res: Response,
+    @Req() req: FastifyRequest,
+    @Res() res: FastifyReply,
   ) {
     const versionStr = versionQuery ? versionQuery : '1';
     const urlParts = req.url.split('/hls/');
@@ -89,13 +110,13 @@ export class EdgeContentController {
       : 'public, max-age=60';
     const ttlSeconds = isSegment ? 86400 : 60;
 
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Range, Origin, Accept, X-Requested-With, Content-Type');
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', cacheControl);
-    res.setHeader('X-CDN-Edge', this.edgeNodeId);
-    res.setHeader('X-CDN-Region', this.edgeRegion);
+    this.setHeader(res, 'Access-Control-Allow-Origin', '*');
+    this.setHeader(res, 'Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    this.setHeader(res, 'Access-Control-Allow-Headers', 'Range, Origin, Accept, X-Requested-With, Content-Type');
+    this.setHeader(res, 'Content-Type', contentType);
+    this.setHeader(res, 'Cache-Control', cacheControl);
+    this.setHeader(res, 'X-CDN-Edge', this.edgeNodeId);
+    this.setHeader(res, 'X-CDN-Region', this.edgeRegion);
 
     const cachedBuffer = await this.edgeCacheService.getHlsContent(
       fileId,
@@ -104,13 +125,13 @@ export class EdgeContentController {
     );
 
     if (cachedBuffer) {
-      res.setHeader('X-Cache', 'HIT');
+      this.setHeader(res, 'X-Cache', 'HIT');
       this.metricsService.cacheHitsTotal.inc();
       this.metricsService.bytesServedTotal.inc({ source: 'edge_cache' }, cachedBuffer.length);
-      return res.status(HttpStatus.OK).end(cachedBuffer);
+      return this.sendResponse(res, HttpStatus.OK, cachedBuffer);
     }
 
-    res.setHeader('X-Cache', 'MISS');
+    this.setHeader(res, 'X-Cache', 'MISS');
     this.metricsService.cacheMissesTotal.inc();
 
     try {
@@ -141,11 +162,11 @@ export class EdgeContentController {
         );
 
       this.metricsService.bytesServedTotal.inc({ source: 'origin' }, fullBuffer.length);
-      return res.status(HttpStatus.OK).end(fullBuffer);
+      return this.sendResponse(res, HttpStatus.OK, fullBuffer);
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : 'Not found';
       this.logger.warn(`HLS fetch failed for ${fileId}/${rawSubpath}: ${errMsg}`);
-      return res.status(HttpStatus.NOT_FOUND).json({ error: 'HLS stream not found' });
+      return this.sendResponse(res, HttpStatus.NOT_FOUND, { error: 'HLS stream not found' });
     }
   }
 
@@ -154,7 +175,7 @@ export class EdgeContentController {
     @Param('fileId') fileId: string,
     @Query('v', ParseIntPipe) version: number,
     @Headers('x-cache-fill-mode') cacheFillMode: string,
-    @Res() res: Response,
+    @Res() res: FastifyReply,
   ) {
     const reqStart = performance.now();
     const versionStr = version.toString();
@@ -166,7 +187,7 @@ export class EdgeContentController {
       activeSpan.setAttribute('cdn.edge_id', this.edgeNodeId);
       activeSpan.setAttribute('cdn.region', this.edgeRegion);
       const traceId = activeSpan.spanContext().traceId;
-      if (traceId) res.setHeader('X-Trace-Id', traceId);
+      if (traceId) this.setHeader(res, 'X-Trace-Id', traceId);
     }
 
     // 1. Peer-to-peer fill request from another Edge Node
@@ -177,7 +198,7 @@ export class EdgeContentController {
         activeSpan?.setAttribute('cdn.cache_state', 'PEER_HIT');
         this.metricsService.cacheHitsTotal.inc();
         this.metricsService.bytesServedTotal.inc({ source: 'peer_cache' }, buffer.length);
-        return res.status(HttpStatus.OK).end(buffer);
+        return this.sendResponse(res, HttpStatus.OK, buffer);
       }
       this.logger.log(`[Peer Mode] [Cache Miss] ${fileId} v${version} — returning 404`);
       activeSpan?.setAttribute('cdn.cache_state', 'PEER_MISS');
@@ -209,13 +230,13 @@ export class EdgeContentController {
       });
 
       const meta = await this.edgeCacheService.getMetadata(fileId, versionStr);
-      if (meta?.contentType) res.setHeader('Content-Type', meta.contentType);
-      if (meta?.etag) res.setHeader('ETag', meta.etag);
-      if (meta?.contentEncoding) res.setHeader('Content-Encoding', meta.contentEncoding);
-      res.setHeader('X-Cache', 'HIT');
-      res.setHeader('X-CDN-Edge', this.edgeNodeId);
-      res.setHeader('X-CDN-Region', this.edgeRegion);
-      return res.status(HttpStatus.OK).end(cached);
+      if (meta?.contentType) this.setHeader(res, 'Content-Type', meta.contentType);
+      if (meta?.etag) this.setHeader(res, 'ETag', meta.etag);
+      if (meta?.contentEncoding) this.setHeader(res, 'Content-Encoding', meta.contentEncoding);
+      this.setHeader(res, 'X-Cache', 'HIT');
+      this.setHeader(res, 'X-CDN-Edge', this.edgeNodeId);
+      this.setHeader(res, 'X-CDN-Region', this.edgeRegion);
+      return this.sendResponse(res, HttpStatus.OK, cached);
     }
 
     this.logger.log(`[Cache Miss] ${fileId} v${version} — starting tiered cache fill`);
@@ -237,7 +258,7 @@ export class EdgeContentController {
       if (retryBuffer) {
         this.logger.log(`[Stampede] Resolved from cache after wait for ${fileId} v${version}`);
         this.metricsService.cacheHitsTotal.inc();
-        return res.status(HttpStatus.OK).end(retryBuffer);
+        return this.sendResponse(res, HttpStatus.OK, retryBuffer);
       }
       return this.streamFromOriginDirect(fileId, version, res);
     }
@@ -305,8 +326,8 @@ export class EdgeContentController {
                 timestamp: new Date().toISOString(),
               });
 
-              res.setHeader('X-Cache', 'PEER_HIT');
-              return res.status(HttpStatus.OK).end(buffer);
+              this.setHeader(res, 'X-Cache', 'PEER_HIT');
+              return this.sendResponse(res, HttpStatus.OK, buffer);
             }
 
             this.logger.log(`[Peer Fetch] ${peer.edgeId} returned 404, trying next`);
@@ -327,7 +348,7 @@ export class EdgeContentController {
 
       if (!storagePath) {
         this.logger.error(`[Origin Fallback] No storage path for ${fileId} v${version}`);
-        return res.status(HttpStatus.NOT_FOUND).send('File not found');
+        return this.sendResponse(res, HttpStatus.NOT_FOUND, 'File not found');
       }
 
       this.logger.log(`[Origin Fallback] Fetching ${fileId} v${version} from MinIO`);
@@ -368,13 +389,14 @@ export class EdgeContentController {
         timestamp: new Date().toISOString(),
       });
 
-      res.setHeader('X-Cache', 'MISS');
-      return res.status(HttpStatus.OK).end(fullBuffer);
+      this.setHeader(res, 'X-Cache', 'MISS');
+      return this.sendResponse(res, HttpStatus.OK, fullBuffer);
     } catch (error: any) {
       
       this.logger.error(`[Total Failure] ${fileId} v${version}: ${error.message}`);
-      if (!res.headersSent) {
-        return res.status(HttpStatus.BAD_GATEWAY).send('Failed to retrieve file');
+      const headersSent = res.sent || (res as any).headersSent || (res as any).raw?.headersSent;
+      if (!headersSent) {
+        return this.sendResponse(res, HttpStatus.BAD_GATEWAY, 'Failed to retrieve file');
       }
     } finally {
       
@@ -445,7 +467,7 @@ export class EdgeContentController {
   private async streamFromOriginDirect(
     fileId: string,
     version: number,
-    res: Response,
+    res: FastifyReply,
   ): Promise<void> {
     try {
       const response = await firstValueFrom(
@@ -455,14 +477,16 @@ export class EdgeContentController {
       );
       const storagePath = response.data.storagePath;
       if (!storagePath) {
-        res.status(HttpStatus.NOT_FOUND).send('File not found');
+        this.sendResponse(res, HttpStatus.NOT_FOUND, 'File not found');
         return;
       }
       const stream = await this.minioService.getObjectStream(storagePath);
-      stream.pipe(res);
+      const rawRes = (res as any).raw || res;
+      stream.pipe(rawRes);
     } catch {
-      if (!res.headersSent) {
-        res.status(HttpStatus.BAD_GATEWAY).send('Failed to retrieve file');
+      const headersSent = res.sent || (res as any).headersSent || (res as any).raw?.headersSent;
+      if (!headersSent) {
+        this.sendResponse(res, HttpStatus.BAD_GATEWAY, 'Failed to retrieve file');
       }
     }
   }

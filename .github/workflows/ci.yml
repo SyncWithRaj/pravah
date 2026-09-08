@@ -151,8 +151,13 @@ jobs:
         include:
           - service: core
             file: infra/docker/Dockerfile.core
+            context: .
           - service: edge
             file: infra/docker/Dockerfile.edge
+            context: .
+          - service: nginx-edge
+            file: infra/nginx/Dockerfile
+            context: infra/nginx
 
     steps:
       - name: Checkout repository
@@ -164,7 +169,7 @@ jobs:
       - name: Verify container build
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ${{ matrix.context }}
           file: ${{ matrix.file }}
           push: false
           tags: pravah-${{ matrix.service }}:ci-test

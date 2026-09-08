@@ -19,6 +19,7 @@ services:
     container_name: pravah-edge
     restart: always
     ports:
+      - "8080:80"
       - "3001:3001"
     environment:
       - PORT=3001
@@ -27,7 +28,7 @@ services:
       - REDIS_HOST=${REDIS_HOST:-edge-redis}
       - REDIS_PORT=${REDIS_PORT:-6379}
       - CORE_API_URL=${CORE_API_URL:-http://localhost:3000}
-      - KAFKA_BROKERS=${KAFKA_BROKERS:-localhost:19092}
+      - KAFKA_BROKERS=${KAFKA_BROKERS:-redpanda:9092}
       - MINIO_ENDPOINT=${MINIO_ENDPOINT:-localhost}
       - MINIO_PORT=${MINIO_PORT:-9000}
       - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY:-admin_minio}
@@ -39,7 +40,20 @@ services:
     networks:
       - pravah-net
 
-  # 3. Edge Promtail (Ships local Edge logs to Central Core Loki)
+  # 3. Linux Zero-Copy Nginx Reverse Proxy (Edge Data Plane Frontline)
+  edge-proxy:
+    build:
+      context: ../nginx
+      dockerfile: Dockerfile
+    container_name: pravah-edge-proxy
+    restart: always
+    network_mode: "service:edge-app"
+    depends_on:
+      - edge-app
+    volumes:
+      - edge_nginx_cache:/var/cache/nginx
+
+  # 4. Edge Promtail (Ships local Edge logs to Central Core Loki)
   promtail-edge:
     image: grafana/promtail:latest
     container_name: pravah-edge-promtail
@@ -53,6 +67,7 @@ services:
 
 volumes:
   edge_redis_data:
+  edge_nginx_cache:
 
 networks:
   pravah-net:
