@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
@@ -25,7 +25,7 @@ export interface ReplicationJobData {
 }
 
 @Injectable()
-export class ReplicationService {
+export class ReplicationService implements OnModuleInit {
   private readonly logger = new Logger(ReplicationService.name);
   private readonly hashRing = new HashRing();
 
@@ -37,6 +37,21 @@ export class ReplicationService {
     private readonly metricsService: MetricsService,
     private readonly telemetryGateway: TelemetryGateway,
   ) {}
+
+  async onModuleInit() {
+    await this.syncDlqGauge();
+  }
+
+  async syncDlqGauge() {
+    try {
+      const count = await this.prisma.replicationStatus.count({
+        where: { isDeadLetter: true },
+      });
+      this.metricsService.dlqActiveItems.set(count);
+    } catch (e: any) {
+      this.logger.warn(`Failed to sync DLQ gauge: ${e.message}`);
+    }
+  }
 
   async dispatchReplication(
     fileId: string,
@@ -235,6 +250,8 @@ export class ReplicationService {
       action: 'replayed',
     });
 
+    await this.syncDlqGauge();
+
     return {
       success: true,
       message: `Replication job for file ${record.fileId} replayed to ${record.edgeNode.name}`,
@@ -258,6 +275,8 @@ export class ReplicationService {
         this.logger.error(`Failed to replay DLQ item ${item.id}: ${errorMsg}`);
       }
     }
+
+    await this.syncDlqGauge();
 
     return {
       replayedCount: replayedIds.length,
@@ -283,6 +302,8 @@ export class ReplicationService {
         deadLetterReason: 'Purged by Admin',
       },
     });
+
+    await this.syncDlqGauge();
 
     return {
       success: true,

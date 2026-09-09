@@ -1,5 +1,12 @@
-import { Injectable, Inject, OnModuleInit, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  Optional,
+  OnModuleInit,
+  Logger,
+} from '@nestjs/common';
 import { ClientKafka } from '@nestjs/microservices';
+import { MetricsService } from '../../metrics/metrics.service';
 import { FileUploadedEvent } from './events/file-uploaded.event';
 import { CacheAccessEvent } from './events/cache-access.event';
 import { ReplicationDLQEvent } from './events/replication-dlq.event';
@@ -14,6 +21,7 @@ export class KafkaService implements OnModuleInit {
 
   constructor(
     @Inject('KAFKA_CLIENT') private readonly kafkaClient: ClientKafka,
+    @Optional() private readonly metricsService?: MetricsService,
   ) {}
 
   async onModuleInit() {
@@ -29,6 +37,7 @@ export class KafkaService implements OnModuleInit {
   }
 
   emitCacheInvalidate(fileId: string) {
+    this.metricsService?.cacheInvalidationsTotal.inc({ reason: 'invalidation' });
     this.kafkaClient.emit('cache.invalidate', { fileId });
     this.logger.log(`Emitted cache.invalidate event for file: ${fileId}`);
   }

@@ -51,10 +51,16 @@ export class ReplicationProcessor extends WorkerHost {
     });
 
     try {
-      const version = await this.prisma.fileVersion.findUnique({
-        where: { id: versionId },
-        include: { file: true },
-      });
+      const isNum = !isNaN(Number(versionId));
+      const version = isNum
+        ? await this.prisma.fileVersion.findFirst({
+            where: { fileId, versionNumber: Number(versionId) },
+            include: { file: true },
+          })
+        : await this.prisma.fileVersion.findUnique({
+            where: { id: versionId },
+            include: { file: true },
+          });
 
       if (!version) {
         throw new Error(`Version ${versionId} not found for file ${fileId}`);
@@ -191,6 +197,7 @@ export class ReplicationProcessor extends WorkerHost {
           edge_id: edgeNodeId,
           action: 'queued',
         });
+        this.metricsService.dlqActiveItems.inc();
 
         this.logger.error(
           `Replication MOVED TO DLQ after ${currentAttempt} attempts: ${fileId} -> edge ${edgeNodeId}: ${errorMessage}`,

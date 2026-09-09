@@ -3,19 +3,20 @@ global:
   evaluation_interval: 5s
 
 scrape_configs:
-  # 1. Pravah Central Core API
+  # 1. Pravah Central Core API (Control Plane)
   - job_name: 'pravah-core'
     metrics_path: '/api/v1/metrics'
+    honor_labels: true
     static_configs:
       - targets: ['core-app:3000']
         labels:
           app: 'pravah-core'
           role: 'control-plane'
-          region: 'central'
 
-  # 2. Pravah Edge Nodes
-  - job_name: 'pravah-edge'
+  # 2. Pravah Edge Node 01 (Mumbai - ap-south-1)
+  - job_name: 'pravah-edge-mumbai'
     metrics_path: '/metrics'
+    honor_labels: true
     static_configs:
       - targets: ['edge-app:3001']
         labels:
@@ -23,3 +24,27 @@ scrape_configs:
           role: 'data-plane'
           region: 'ap-south-1'
           edge_id: 'edge-node-01'
+
+  # 3. Pravah Edge Node 02 (Virginia - us-east-1)
+  - job_name: 'pravah-edge-virginia'
+    metrics_path: '/metrics'
+    honor_labels: true
+    static_configs:
+      - targets: ['edge-node-02:4001']
+        labels:
+          app: 'pravah-edge'
+          role: 'data-plane'
+          region: 'us-east-1'
+          edge_id: 'edge-node-02'
+
+  # 4. Pravah Edge Node 03 (Frankfurt - eu-central-1)
+  - job_name: 'pravah-edge-frankfurt'
+    metrics_path: '/metrics'
+    honor_labels: true
+    static_configs:
+      - targets: ['edge-node-03:5001']
+        labels:
+          app: 'pravah-edge'
+          role: 'data-plane'
+          region: 'eu-central-1'
+          edge_id: 'edge-node-03'

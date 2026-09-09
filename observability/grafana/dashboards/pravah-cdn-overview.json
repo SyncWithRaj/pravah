@@ -1,5 +1,7 @@
 {
-  "annotations": { "list": [] },
+  "annotations": {
+    "list": []
+  },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -8,14 +10,35 @@
   "liveNow": true,
   "panels": [
     {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 100,
+      "title": "Executive KPI Overview",
+      "type": "row"
+    },
+    {
       "id": 1,
       "title": "Cache Hit Ratio (Origin Offload)",
       "type": "gauge",
-      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
-          "expr": "(sum(rate(pravah_edge_cache_hits_total[5m])) or vector(0)) / ((sum(rate(pravah_edge_cache_hits_total[5m])) or vector(0)) + (sum(rate(pravah_edge_cache_misses_total[5m])) or vector(0)) + 0.00001) * 100",
+          "expr": "((sum(rate(pravah_edge_cache_hits_total[5m])) or vector(0)) / ((sum(rate(pravah_edge_cache_hits_total[5m])) or vector(0)) + (sum(rate(pravah_edge_cache_misses_total[5m])) or vector(0)) + 0.00001)) * 100",
+          "legendFormat": "Hit Ratio",
           "refId": "A"
         }
       ],
@@ -27,9 +50,18 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "red", "value": null },
-              { "color": "yellow", "value": 50 },
-              { "color": "green", "value": 80 }
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "#EAB839",
+                "value": 50
+              },
+              {
+                "color": "#56A64B",
+                "value": 80
+              }
             ]
           }
         }
@@ -37,13 +69,124 @@
     },
     {
       "id": 2,
-      "title": "Avg Edge Delivery Latency",
+      "title": "Global Edge Throughput",
       "type": "stat",
-      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
-          "expr": "(rate(pravah_edge_request_duration_seconds_sum[5m]) / (rate(pravah_edge_request_duration_seconds_count[5m]) + 0.0001)) * 1000",
+          "expr": "(sum(rate(pravah_edge_cache_hits_total[1m])) or vector(0)) + (sum(rate(pravah_edge_cache_misses_total[1m])) or vector(0))",
+          "legendFormat": "Edge RPS",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#73BF69",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Egress Bandwidth Served",
+      "type": "stat",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(pravah_edge_bytes_served_total[1m])) or vector(0)",
+          "legendFormat": "Bandwidth",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#5794F2",
+                "value": null
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "title": "p95 Edge Latency",
+      "type": "stat",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "(histogram_quantile(0.95, sum(rate(pravah_edge_request_duration_seconds_bucket[1m])) by (le)) or vector(0)) * 1000",
+          "legendFormat": "p95 Latency",
           "refId": "A"
         }
       ],
@@ -53,117 +196,645 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "green", "value": null },
-              { "color": "yellow", "value": 50 },
-              { "color": "red", "value": 200 }
+              {
+                "color": "#73BF69",
+                "value": null
+              },
+              {
+                "color": "#EAB839",
+                "value": 50
+              },
+              {
+                "color": "#F2495C",
+                "value": 200
+              }
             ]
           }
         }
-      }
-    },
-    {
-      "id": 3,
-      "title": "Active Healthy Edge Nodes",
-      "type": "stat",
-      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "targets": [
-        {
-          "expr": "count(pravah_core_edge_health_status == 1) or vector(0)",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": { "mode": "thresholds" },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              { "color": "red", "value": null },
-              { "color": "yellow", "value": 1 },
-              { "color": "green", "value": 3 }
-            ]
-          }
-        }
-      }
-    },
-    {
-      "id": 4,
-      "title": "Total Geo-Routed Downloads",
-      "type": "stat",
-      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
-      "targets": [
-        {
-          "expr": "sum(pravah_core_geo_routing_total) or vector(0)",
-          "refId": "A"
-        }
-      ],
-      "fieldConfig": {
-        "defaults": {
-          "color": { "fixedColor": "blue", "mode": "fixed" }
-        }
+      },
+      "options": {
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
       }
     },
     {
       "id": 5,
-      "title": "RAM Hits vs Origin Misses (Requests / sec)",
-      "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "title": "Active Healthy Edge Nodes",
+      "type": "stat",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
-          "expr": "rate(pravah_edge_cache_hits_total[1m])",
-          "legendFormat": "RAM Cache Hit (Fast)",
+          "expr": "count(max by (edge_id) (pravah_core_edge_health_status) == 1) or vector(0)",
+          "legendFormat": "Healthy Nodes",
           "refId": "A"
-        },
-        {
-          "expr": "rate(pravah_edge_cache_misses_total[1m])",
-          "legendFormat": "Origin Fetch Miss",
-          "refId": "B"
         }
       ],
       "fieldConfig": {
         "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#F2495C",
+                "value": null
+              },
+              {
+                "color": "#EAB839",
+                "value": 1
+              },
+              {
+                "color": "#73BF69",
+                "value": 3
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 6,
+      "title": "Active DLQ Incidents",
+      "description": "Unresolved replication failures currently in Dead Letter Queue",
+      "type": "stat",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(pravah_core_dlq_active_items) or vector(0)",
+          "legendFormat": "Active DLQ",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#73BF69",
+                "value": null
+              },
+              {
+                "color": "#F2495C",
+                "value": 1
+              }
+            ]
+          }
+        }
+      },
+      "options": {
+        "graphMode": "area",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "id": 200,
+      "title": "CDN Edge Delivery & Caching Layer",
+      "type": "row"
+    },
+    {
+      "id": 7,
+      "title": "Edge Delivery: RAM Hits vs Origin Misses vs Peer Fills",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum(rate(pravah_edge_cache_hits_total[1m]))",
+          "legendFormat": "RAM Cache Hit (Sub-ms)",
+          "refId": "A"
+        },
+        {
+          "expr": "sum(rate(pravah_edge_cache_misses_total[1m]))",
+          "legendFormat": "Origin Fetch Miss (Origin Fill)",
+          "refId": "B"
+        },
+        {
+          "expr": "sum(rate(pravah_edge_peer_fetches_total[1m]))",
+          "legendFormat": "Tiered Peer-to-Peer Cache Fill",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
           "custom": {
             "drawStyle": "line",
             "fillOpacity": 20,
-            "stacking": { "mode": "none" }
+            "lineInterpolation": "smooth",
+            "stacking": {
+              "mode": "none"
+            }
           }
         }
       }
     },
     {
-      "id": 6,
-      "title": "Traffic Routed by Region (Haversine Geo)",
+      "id": 8,
+      "title": "End-to-End Latency Percentiles (p50, p90, p95, p99)",
       "type": "timeseries",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
-      "datasource": { "type": "prometheus", "uid": "Prometheus" },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 7
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
-          "expr": "sum by (edge_name, edge_region) (rate(pravah_core_geo_routing_total[1m]))",
+          "expr": "histogram_quantile(0.50, sum(rate(pravah_edge_request_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p50 (Median)",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.90, sum(rate(pravah_edge_request_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p90",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(pravah_edge_request_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p95",
+          "refId": "C"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(pravah_edge_request_duration_seconds_bucket[1m])) by (le)) * 1000",
+          "legendFormat": "p99",
+          "refId": "D"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15,
+            "lineInterpolation": "smooth"
+          }
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Egress Bandwidth by Source (RAM vs Origin vs Peer)",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 15
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (source) (rate(pravah_edge_bytes_served_total[1m]))",
+          "legendFormat": "Source: {{source}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 30,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "GeoDNS Ingress Distribution by Edge Region",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 15
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (edge_name, edge_region) (rate(pravah_core_geo_routing_total[1m])) or sum by (edge_name, edge_region) (rate(pravah_core_geo_routing_total[5m]))",
           "legendFormat": "{{edge_name}} ({{edge_region}})",
           "refId": "A"
         }
       ],
       "fieldConfig": {
         "defaults": {
+          "unit": "reqps",
           "custom": {
             "drawStyle": "bars",
-            "fillOpacity": 50
+            "fillOpacity": 50,
+            "stacking": {
+              "mode": "normal"
+            }
           }
         }
       }
     },
     {
-      "id": 7,
-      "title": "Critical System Errors & Failures (ERROR)",
-      "type": "logs",
-      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 14 },
-      "datasource": { "type": "loki", "uid": "Loki" },
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 22
+      },
+      "id": 300,
+      "title": "Multi-Region Topology & Self-Healing Resilience",
+      "type": "row"
+    },
+    {
+      "id": 11,
+      "title": "Multi-Region Edge Node Health Matrix (1=Healthy, 0.5=Degraded, 0=Down)",
+      "type": "state-timeline",
+      "gridPos": {
+        "h": 6,
+        "w": 14,
+        "x": 0,
+        "y": 23
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
       "targets": [
         {
-          "expr": "{app=~\"pravah-core|pravah-edge\"} |~ \"(?i)ERROR|Exception|Failed\"",
+          "expr": "max by (edge_name, edge_id) (pravah_core_edge_health_status)",
+          "legendFormat": "{{edge_name}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "DOWN",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "HEALTHY",
+                  "color": "green"
+                },
+                "0.5": {
+                  "text": "DEGRADED",
+                  "color": "yellow"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "Dynamic Self-Healing & Replica Repairs (BullMQ)",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 6,
+        "w": 10,
+        "x": 14,
+        "y": 23
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "rate(pravah_core_replication_repairs_total[1m])",
+          "legendFormat": "Self-Healing Repairs/s",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": {
+            "fixedColor": "#8AB8FF",
+            "mode": "fixed"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 25
+          }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 29
+      },
+      "id": 400,
+      "title": "Core Control Plane & Background Pipelines",
+      "type": "row"
+    },
+    {
+      "id": 13,
+      "title": "BullMQ Replication Jobs Pipeline",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 0,
+        "y": 30
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(pravah_core_replication_jobs_total[1m]))",
+          "legendFormat": "{{status}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20
+          }
+        }
+      }
+    },
+    {
+      "id": 14,
+      "title": "Kafka Cache Invalidation Broadcasts",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 8,
+        "y": 30
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "rate(pravah_core_cache_invalidations_total[1m])",
+          "legendFormat": "Invalidations / sec",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "color": {
+            "fixedColor": "#FF780A",
+            "mode": "fixed"
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20
+          }
+        }
+      }
+    },
+    {
+      "id": 15,
+      "title": "Core Control Plane Ingress Requests",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 7,
+        "w": 8,
+        "x": 16,
+        "y": 30
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (route, method) (rate(pravah_core_http_requests_total[1m]))",
+          "legendFormat": "{{method}} {{route}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15
+          }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 37
+      },
+      "id": 500,
+      "title": "V8 Runtime & Event Loop Diagnostics",
+      "type": "row"
+    },
+    {
+      "id": 16,
+      "title": "V8 Heap Memory Utilization (Core vs Edge)",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 0,
+        "y": 38
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "pravah_edge_nodejs_heap_size_used_bytes",
+          "legendFormat": "Edge {{edge_id}} Heap",
+          "refId": "A"
+        },
+        {
+          "expr": "pravah_core_nodejs_heap_size_used_bytes",
+          "legendFormat": "Core Control Plane Heap",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 20
+          }
+        }
+      }
+    },
+    {
+      "id": 17,
+      "title": "Node.js Event Loop Lag (ms) — Optimal < 20ms",
+      "type": "timeseries",
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 38
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "targets": [
+        {
+          "expr": "pravah_edge_nodejs_eventloop_lag_seconds * 1000",
+          "legendFormat": "Edge {{edge_id}} Lag",
+          "refId": "A"
+        },
+        {
+          "expr": "pravah_core_nodejs_eventloop_lag_seconds * 1000",
+          "legendFormat": "Core Control Plane Lag",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#73BF69",
+                "value": null
+              },
+              {
+                "color": "#EAB839",
+                "value": 20
+              },
+              {
+                "color": "#F2495C",
+                "value": 50
+              }
+            ]
+          },
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 15
+          }
+        }
+      }
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 45
+      },
+      "id": 600,
+      "title": "Centralized Structured Logs (Loki)",
+      "type": "row"
+    },
+    {
+      "id": 18,
+      "title": "Critical System Errors & Exceptions (ERROR)",
+      "type": "logs",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 46
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "Loki"
+      },
+      "targets": [
+        {
+          "expr": "{app=~\"pravah-core|pravah-edge\", container!~\"(.*promtail.*)\"} |~ \"(?i)ERROR|Exception|Failed\" !~ \"(?i)could not inspect|can not get logs\"",
           "refId": "A"
         }
       ],
@@ -177,35 +848,22 @@
       }
     },
     {
-      "id": 8,
-      "title": "CDN Business Operations (Uploads, Cache Hits, Kafka, 302s)",
+      "id": 19,
+      "title": "CDN Operations & Telemetry Stream (INFO)",
       "type": "logs",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 21 },
-      "datasource": { "type": "loki", "uid": "Loki" },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 53
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "Loki"
+      },
       "targets": [
         {
-          "expr": "{app=~\"pravah-core|pravah-edge\"} |~ \"(?i)LOG|INFO\" !~ \"(?i)Heartbeat\"",
-          "refId": "A"
-        }
-      ],
-      "options": {
-        "showLabels": true,
-        "showCommonLabels": false,
-        "wrapLogMessage": true,
-        "prettifyLogMessage": true,
-        "enableLogDetails": true,
-        "sortOrder": "Descending"
-      }
-    },
-    {
-      "id": 9,
-      "title": "High-Frequency Diagnostics (Heartbeats & Crons)",
-      "type": "logs",
-      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 29 },
-      "datasource": { "type": "loki", "uid": "Loki" },
-      "targets": [
-        {
-          "expr": "{app=~\"pravah-core|pravah-edge\"} |~ \"(?i)Heartbeat|DEBUG\"",
+          "expr": "{app=~\"pravah-core|pravah-edge\", container!~\"(.*promtail.*)\"} |~ \"(?i)LOG|INFO\" !~ \"(?i)WARN|ERROR|Exception|Failed|Heartbeat\"",
           "refId": "A"
         }
       ],
@@ -222,11 +880,26 @@
   "refresh": "5s",
   "schemaVersion": 38,
   "style": "dark",
-  "tags": ["pravah", "cdn", "observability"],
-  "time": { "from": "now-15m", "to": "now" },
-  "timepicker": { "refresh_intervals": ["5s", "10s", "30s", "1m"] },
+  "tags": [
+    "pravah",
+    "cdn",
+    "observability",
+    "production"
+  ],
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m"
+    ]
+  },
   "timezone": "browser",
-  "title": "Pravah Distributed CDN - Overview & Telemetry",
+  "title": "Pravah Distributed CDN - Master Control Room",
   "uid": "pravah-cdn-overview",
-  "version": 4
+  "version": 6
 }

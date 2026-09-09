@@ -13,6 +13,7 @@ export class MetricsService implements OnModuleInit {
   public readonly replicationJobsTotal: client.Counter<string>;
   public readonly cacheInvalidationsTotal: client.Counter<string>;
   public readonly dlqEventsTotal: client.Counter<string>;
+  public readonly dlqActiveItems: client.Gauge<string>;
   public readonly replicationRepairsTotal: client.Counter<string>;
 
   constructor() {
@@ -73,7 +74,14 @@ export class MetricsService implements OnModuleInit {
       registers: [this.registry],
     });
 
-    // 7. Dead Letter Queue (DLQ) Events Counter (Phase 7)
+    // 7. Dead Letter Queue (DLQ) Active Backlog Gauge & Events Counter (Phase 7)
+    this.dlqActiveItems = new client.Gauge({
+      name: 'pravah_core_dlq_active_items',
+      help: 'Current count of unresolved items in the Dead Letter Queue (DLQ)',
+      registers: [this.registry],
+    });
+    this.dlqActiveItems.set(0);
+
     this.dlqEventsTotal = new client.Counter({
       name: 'pravah_core_dlq_events_total',
       help: 'Total number of events routed to Dead Letter Queue (DLQ)',

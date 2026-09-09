@@ -66,6 +66,16 @@ export class EdgeContentController {
     this.peerMaxAttempts = this.configService.get<number>('PEER_MAX_ATTEMPTS', 3);
   }
 
+  private resolvePeerEndpoint(edgeId: string, endpoint: string): string {
+    if (endpoint.includes('localhost') || endpoint.includes('127.0.0.1')) {
+      if (edgeId === 'edge-node-01') return 'http://edge-app:3001';
+      if (edgeId === 'edge-node-02') return 'http://edge-node-02:4001';
+      if (edgeId === 'edge-node-03') return 'http://edge-node-03:5001';
+      return endpoint.replace(/localhost|127\.0\.0\.1/, edgeId);
+    }
+    return endpoint;
+  }
+
   private setHeader(res: FastifyReply, name: string, value: string | number): void {
     if (typeof res.header === 'function') {
       res.header(name, value);
@@ -288,8 +298,9 @@ export class EdgeContentController {
               `[Peer Fetch] Trying ${peer.edgeId} (${peer.region}, ${peer.distanceKm}km)`,
             );
 
+            const peerTarget = this.resolvePeerEndpoint(peer.edgeId, peer.endpoint);
             const peerResponse = await this.httpService.axiosRef.get(
-              `${peer.endpoint}/edge/content/${fileId}?v=${version}`,
+              `${peerTarget}/edge/content/${fileId}?v=${version}`,
               {
                 headers: { 'X-Cache-Fill-Mode': 'peer' },
                 responseType: 'arraybuffer',

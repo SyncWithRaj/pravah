@@ -48,7 +48,7 @@ async function main() {
       region: 'us-east-1',
       latitude: 37.4316,
       longitude: -78.6569,
-      endpointUrl: 'http://localhost:3002',
+      endpointUrl: 'http://localhost:4001',
       status: EdgeNodeStatus.HEALTHY,
     },
     {
@@ -57,7 +57,7 @@ async function main() {
       region: 'eu-central-1',
       latitude: 50.1109,
       longitude: 8.6821,
-      endpointUrl: 'http://localhost:3003',
+      endpointUrl: 'http://localhost:5001',
       status: EdgeNodeStatus.HEALTHY,
     },
   ];

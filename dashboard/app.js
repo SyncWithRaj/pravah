@@ -1094,6 +1094,29 @@ async function playHlsStream(fileId) {
       }
     });
 
+    hls.on(Hls.Events.FRAG_LOADED, (_, data) => {
+      if (data.networkDetails) {
+        const proxyCache = data.networkDetails.getResponseHeader?.('x-proxy-cache') || 
+                           data.networkDetails.getResponseHeader?.('X-Proxy-Cache');
+        const redisCache = data.networkDetails.getResponseHeader?.('x-cache-status') || 
+                           data.networkDetails.getResponseHeader?.('X-Cache-Status');
+        
+        const cacheEl = document.getElementById('hls-stat-cache');
+        if (cacheEl) {
+          if (proxyCache === 'HIT') {
+            cacheEl.textContent = 'HIT (Nginx Zero-Copy)';
+            cacheEl.className = 'text-sm font-bold text-emerald-400 font-mono';
+          } else if (redisCache === 'HIT') {
+            cacheEl.textContent = 'HIT (Edge RAM)';
+            cacheEl.className = 'text-sm font-bold text-indigo-400 font-mono';
+          } else if (proxyCache === 'MISS' || redisCache === 'MISS') {
+            cacheEl.textContent = 'MISS (Origin Fill)';
+            cacheEl.className = 'text-sm font-bold text-amber-400 font-mono';
+          }
+        }
+      }
+    });
+
     // Update buffer stats
     setInterval(() => {
       if (video.buffered.length > 0) {
@@ -1611,14 +1634,60 @@ function setupSocketIO() {
       document.getElementById('text-ws').textContent = 'WS Disconnected';
     });
 
+    // 1. Live Cache Access Feed
     socket.on('cache.access', (data) => {
       appendLiveCacheItem(data);
     });
 
+    // 2. Real-Time Upload Progress (Chunk-by-Chunk)
     socket.on('upload.progress', (data) => {
       if (data.fileId === STATE.activeUpload?.fileId) {
         document.getElementById('upload-status-text').textContent = `WS Broadcast: Chunk ${data.chunkIndex + 1}/${data.totalChunks} (${data.percentage}%)`;
       }
+    });
+
+    // 3. Real Backend Throughput & Bandwidth Stream
+    socket.on('telemetry.throughput', (data) => {
+      if (STATE.telemetryChart) {
+        STATE.telemetryChart.data.datasets[0].data.shift();
+        STATE.telemetryChart.data.datasets[0].data.push(data.requestsPerSecond || 0);
+        STATE.telemetryChart.update('none');
+      }
+
+      const rpsEl = document.getElementById('metric-rps');
+      if (rpsEl) rpsEl.textContent = Number(data.requestsPerSecond || 0).toLocaleString();
+
+      const bwEl = document.getElementById('metric-bandwidth');
+      if (bwEl) bwEl.textContent = formatBytes(data.bandwidthBps || 0) + '/s';
+
+      const hitEl = document.getElementById('metric-hit-ratio');
+      if (hitEl) hitEl.textContent = `${data.hitRatio != null ? data.hitRatio : 100}%`;
+
+      const reqEl = document.getElementById('metric-total-requests');
+      if (reqEl) reqEl.textContent = Number((data.totalHits || 0) + (data.totalMisses || 0)).toLocaleString();
+    });
+
+    // 4. Edge Node Health Status Transitions
+    socket.on('edge.health_changed', (data) => {
+      showToast(`Node ${data.edgeId} health: ${data.oldStatus} -> ${data.newStatus}`, data.newStatus === 'HEALTHY' ? 'success' : 'error');
+      refreshTopologyNodes();
+    });
+
+    // 5. Dead Letter Queue Alerts
+    socket.on('dlq.alert', (data) => {
+      showToast(`DLQ Alert: File ${data.fileId?.substring(0, 8)} failed replication on ${data.edgeNodeId}`, 'error');
+      refreshDLQTable();
+    });
+
+    // 6. Dynamic Replication Self-Healing Repair
+    socket.on('replication.repaired', (data) => {
+      showToast(`Self-Healing: Replaced dead node ${data.deadNodeId} with ${data.replacementNodeId}`, 'info');
+      refreshTopologyNodes();
+    });
+
+    // 7. Cluster-wide Cache Invalidation Event
+    socket.on('cache.invalidated', (data) => {
+      showToast(`Cache Invalidation: File ${data.fileId?.substring(0, 8)} purged across all edges`, 'info');
     });
 
   } catch (err) {
@@ -1632,13 +1701,14 @@ function appendLiveCacheItem(data) {
 
   const row = document.createElement('div');
   const isHit = data.eventType === 'hit';
-  const tag = isHit ? '[HIT]' : '[MISS]';
-  const color = isHit ? 'text-emerald-400' : 'text-amber-400';
+  const isPeer = data.eventType === 'peer_fill';
+  const tag = isHit ? '[HIT]' : isPeer ? '[PEER]' : '[MISS]';
+  const color = isHit ? 'text-emerald-400' : isPeer ? 'text-cyan-400' : 'text-amber-400';
 
   row.className = 'p-2 rounded-lg bg-dark-900 border border-white/5 flex items-center justify-between text-[11px] font-mono animate-fadeIn';
   row.innerHTML = `
     <span class="${color} font-semibold">${tag} ${data.fileId?.substring(0, 8)}</span>
-    <span class="text-slate-500 text-[10px]">${data.region || 'Mumbai'} • ${data.downloadLatencyMs || 2}ms</span>
+    <span class="text-slate-500 text-[10px]">${data.region || 'Mumbai'} • ${data.downloadLatencyMs || 2}ms • ${formatBytes(data.bytesServed || 0)}</span>
   `;
 
   feed.prepend(row);
@@ -1649,8 +1719,8 @@ function initTelemetryChart() {
   const ctx = document.getElementById('telemetry-chart');
   if (!ctx || STATE.telemetryChart) return;
 
-  const labels = Array.from({ length: 20 }, (_, i) => `${20 - i}s ago`);
-  const data = Array.from({ length: 20 }, () => Math.floor(1150 + Math.random() * 120));
+  const labels = Array.from({ length: 20 }, (_, i) => `${(20 - i) * 2}s ago`);
+  const data = Array.from({ length: 20 }, () => 0);
 
   STATE.telemetryChart = new Chart(ctx, {
     type: 'line',
@@ -1664,30 +1734,25 @@ function initTelemetryChart() {
         fill: true,
         tension: 0.4,
         borderWidth: 2,
-        pointRadius: 0
+        pointRadius: 2,
+        pointBackgroundColor: '#818cf8'
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+      animation: { duration: 250 },
       plugins: { legend: { display: false } },
       scales: {
         x: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#64748b', font: { size: 10 } } },
-        y: { grid: { color: 'rgba(255, 255, 255, 0.04)' }, ticks: { color: '#64748b', font: { size: 10 } } }
+        y: { 
+          beginAtZero: true,
+          grid: { color: 'rgba(255, 255, 255, 0.04)' }, 
+          ticks: { color: '#64748b', font: { size: 10 } } 
+        }
       }
     }
   });
-
-  setInterval(() => {
-    if (STATE.telemetryChart) {
-      const nextRps = Math.floor(1200 + Math.random() * 90);
-      STATE.telemetryChart.data.datasets[0].data.shift();
-      STATE.telemetryChart.data.datasets[0].data.push(nextRps);
-      STATE.telemetryChart.update('none');
-      const rpsEl = document.getElementById('metric-rps');
-      if (rpsEl) rpsEl.textContent = nextRps.toLocaleString();
-    }
-  }, 1000);
 }
 
 // ============================================================================

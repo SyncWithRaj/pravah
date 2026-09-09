@@ -1149,6 +1149,42 @@
       <!-- TAB 8: LIVE OBSERVABILITY & METRICS -->
       <!-- ===================================================================== -->
       <section id="tab-telemetry" class="tab-content hidden space-y-6">
+
+        <!-- Live Metric Summary Stat Cards -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div class="glass-panel rounded-2xl p-4 border border-white/10 space-y-1">
+            <span class="text-[10px] uppercase font-mono text-slate-400 block">Current Throughput</span>
+            <div class="flex items-baseline gap-1.5">
+              <span id="metric-rps" class="text-2xl font-black text-white font-mono">0</span>
+              <span class="text-[11px] text-slate-500 font-mono">req/s</span>
+            </div>
+            <span class="text-[10px] text-brand-400 block font-mono">Live Core & Edge Stream</span>
+          </div>
+
+          <div class="glass-panel rounded-2xl p-4 border border-white/10 space-y-1">
+            <span class="text-[10px] uppercase font-mono text-slate-400 block">Bandwidth Delivered</span>
+            <div class="flex items-baseline gap-1.5">
+              <span id="metric-bandwidth" class="text-2xl font-black text-emerald-400 font-mono">0 B/s</span>
+            </div>
+            <span class="text-[10px] text-slate-500 block font-mono">Egress Data Rate</span>
+          </div>
+
+          <div class="glass-panel rounded-2xl p-4 border border-white/10 space-y-1">
+            <span class="text-[10px] uppercase font-mono text-slate-400 block">Global Cache Hit Ratio</span>
+            <div class="flex items-baseline gap-1.5">
+              <span id="metric-hit-ratio" class="text-2xl font-black text-indigo-400 font-mono">100%</span>
+            </div>
+            <span class="text-[10px] text-slate-500 block font-mono">RAM + Zero-Copy Offload</span>
+          </div>
+
+          <div class="glass-panel rounded-2xl p-4 border border-white/10 space-y-1">
+            <span class="text-[10px] uppercase font-mono text-slate-400 block">Total Requests Serviced</span>
+            <div class="flex items-baseline gap-1.5">
+              <span id="metric-total-requests" class="text-2xl font-black text-cyan-400 font-mono">0</span>
+            </div>
+            <span class="text-[10px] text-slate-500 block font-mono">Cumulative Hits + Misses</span>
+          </div>
+        </div>
         
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
           

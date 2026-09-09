@@ -19,6 +19,9 @@ scrape_configs:
             values: ['pravah-core']
     relabel_configs:
       - source_labels: ['__meta_docker_container_name']
+        regex: '/.*promtail.*'
+        action: drop
+      - source_labels: ['__meta_docker_container_name']
         regex: '/(.*)'
         target_label: 'container'
       - replacement: 'pravah-core'
@@ -35,6 +38,9 @@ scrape_configs:
           - name: name
             values: ['pravah-edge']
     relabel_configs:
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/.*(promtail|redis).*'
+        action: drop
       - source_labels: ['__meta_docker_container_name']
         regex: '/(.*)'
         target_label: 'container'
