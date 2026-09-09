@@ -37,7 +37,9 @@ export class KafkaService implements OnModuleInit {
   }
 
   emitCacheInvalidate(fileId: string) {
-    this.metricsService?.cacheInvalidationsTotal.inc({ reason: 'invalidation' });
+    this.metricsService?.cacheInvalidationsTotal.inc({
+      reason: 'invalidation',
+    });
     this.kafkaClient.emit('cache.invalidate', { fileId });
     this.logger.log(`Emitted cache.invalidate event for file: ${fileId}`);
   }

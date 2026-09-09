@@ -13,7 +13,7 @@ import { Request, Response } from 'express';
 export class MetricsInterceptor implements NestInterceptor {
   constructor(private readonly metricsService: MetricsService) {}
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     if (context.getType() !== 'http') {
       return next.handle();
     }
@@ -40,9 +40,12 @@ export class MetricsInterceptor implements NestInterceptor {
             duration,
           );
         },
-        error: (err) => {
+        error: (err: unknown) => {
           const duration = (performance.now() - start) / 1000;
-          const statusCode = String(err.status || err.statusCode || 500);
+          const errObj = err as { status?: number; statusCode?: number } | null;
+          const statusCode = String(
+            errObj?.status || errObj?.statusCode || 500,
+          );
           this.metricsService.httpRequestsTotal.inc({
             method,
             route: path,

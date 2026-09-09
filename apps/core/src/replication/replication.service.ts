@@ -48,8 +48,9 @@ export class ReplicationService implements OnModuleInit {
         where: { isDeadLetter: true },
       });
       this.metricsService.dlqActiveItems.set(count);
-    } catch (e: any) {
-      this.logger.warn(`Failed to sync DLQ gauge: ${e.message}`);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.warn(`Failed to sync DLQ gauge: ${msg}`);
     }
   }
 
