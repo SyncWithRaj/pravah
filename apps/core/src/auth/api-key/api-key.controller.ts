@@ -16,7 +16,7 @@ import { Role } from '@prisma/client';
 import { Request } from 'express';
 
 @Controller('auth/api-keys')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard) // has valid JWT
 export class ApiKeyController {
   constructor(private readonly apiKeyService: ApiKeyService) {}
 
