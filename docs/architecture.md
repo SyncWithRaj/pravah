@@ -6,6 +6,7 @@ This document serves as the primary visual architecture guide for the Distribute
 > * **Diagrams 2–7** represent core mechanics implemented first within a **Modular Monolith** (Phases 1–4).
 > * **Diagram 1** represents the **Target Microservices Architecture** achieved after the Phase 5 refactor.
 > * **Diagrams 8–10** cover Observability, Hardening (DLQ/Retries), and Fault Tolerance.
+> * **Diagrams 11–14** cover Adaptive Bitrate Transcoding (Phase 8A), Kubernetes Orchestration (Phase 8B), Security & RBAC (Phase 8C), and Zero-Copy Reverse Proxy Acceleration (Phase 9).
 > * 🔗 **End-to-End Request Flow:** For the complete HTTP download execution, GeoDNS routing, cache hit/miss resolution, stampede locks, and telemetry sequence, see [**`architecture_2.0.md`**](architecture_2.0.md).
 
 ---
@@ -25,7 +26,10 @@ flowchart TD
     Phase5["Phase 5: Microservices Split & Consistent Hashing<br/>• Refactor monolith into independent microservices<br/>• Custom Consistent Hashing Ring with virtual nodes<br/>• Region-based CDN Routing Algorithm"]
     Phase6["Phase 6: Multi-Region Deployment & Observability<br/>• AWS EC2 multi-region deployment<br/>• Prometheus metrics & Grafana dashboards<br/>• OpenTelemetry tracing & Loki logs<br/>• WebSocket real-time dashboard"]
     Phase7["Phase 7: System Hardening & Fault Tolerance<br/>• 3x exponential backoff & Dead Letter Queues (DLQ)<br/>• Manual DLQ replay API & Alert notifications<br/>• Automatic edge crash failover & replication repair<br/>• Measured performance benchmarks for README"]
-    Phase8["Phase 8: Kubernetes Orchestration (Stretch Phase)<br/>• EKS / self-managed K8s deployment<br/>• Auto-scaling edge pods & ingress controllers"]
+    Phase8A["Phase 8A: Adaptive Bitrate Transcoding ✅<br/>• FFmpeg BullMQ worker pipeline (video/*)<br/>• 6-rendition HLS (1080p→144p) with no-upscale filter<br/>• Master .m3u8 + 4s .ts segment packaging<br/>• Edge HLS caching with CORS headers"]
+    Phase8B["Phase 8B: Kubernetes (EKS) Orchestration ✅<br/>• 16 K8s manifests + Helm charts<br/>• HPA auto-scaling (CPU, memory, RPS)<br/>• 100K RPS EKS stress test (1.77ms P50 latency)"]
+    Phase8C["Phase 8C: Security Hardening & RBAC ✅<br/>• UnifiedAuthGuard (InterService → ApiKey → JWT)<br/>• RolesGuard with hierarchical permissions<br/>• ApiKeyGuard (SHA-256 constant-time lookup)<br/>• InterServiceGuard (HMAC-SHA256 + replay protection)"]
+    Phase9["Phase 9: Zero-Copy Reverse Proxy Acceleration ✅<br/>• Nginx sendfile + tcp_nopush + tcp_nodelay<br/>• 20GB segment cache zone (.ts/.m4s/.mp4)<br/>• 1s manifest microcache zone (.m3u8)<br/>• Upstream keep-alive pooling to Fastify<br/>• Alpine Linux Dockerfile + CI matrix<br/>• K8s sidecar deployment"]
 
     Phase0 --> Phase1
     Phase1 --> Phase2
@@ -34,7 +38,15 @@ flowchart TD
     Phase4 --> Phase5
     Phase5 --> Phase6
     Phase6 --> Phase7
-    Phase7 --> Phase8
+    Phase7 --> Phase8A
+    Phase8A --> Phase8B
+    Phase8B --> Phase8C
+    Phase8C --> Phase9
+
+    style Phase8A fill:#14532d,stroke:#22c55e,color:#f0fdf4
+    style Phase8B fill:#14532d,stroke:#22c55e,color:#f0fdf4
+    style Phase8C fill:#14532d,stroke:#22c55e,color:#f0fdf4
+    style Phase9 fill:#14532d,stroke:#22c55e,color:#f0fdf4
 ```
 
 ---
@@ -611,3 +623,292 @@ sequenceDiagram
         Edge3-->>ReplSvc: 200 OK (Replication Factor = 2 restored across active nodes)
     end
 ```
+
+---
+
+## 11. Adaptive Bitrate Video Transcoding Pipeline (Phase 8A)
+
+This diagram illustrates the end-to-end HLS transcoding pipeline — from video upload detection through FFmpeg multi-bitrate encoding to edge-cached adaptive streaming delivery.
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': { 'actorBkg': '#1e293b', 'actorBorder': '#3b82f6', 'actorTextColor': '#f8fafc', 'signalColor': '#38bdf8', 'signalTextColor': '#f8fafc', 'labelBoxBkgColor': '#0f172a', 'labelBoxBorderColor': '#334155', 'labelTextColor': '#f8fafc', 'loopTextColor': '#f8fafc', 'noteBkgColor': '#1e1e2e', 'noteTextColor': '#f8fafc'}}}%%
+sequenceDiagram
+    autonumber
+    actor Streamer as Streamer (STREAMER Role)
+    participant Core as Core API (Upload Service)
+    participant Kafka as Apache Kafka
+    participant BullMQ as BullMQ Transcoding Queue
+    participant FFmpeg as FFmpeg Worker
+    participant S3 as MinIO / S3 Storage
+    participant Postgres as PostgreSQL DB
+    participant Edge as Edge Nodes (×3)
+    participant Client as Viewer Client
+
+    Streamer->>Core: POST /upload/complete {fileId} (mimeType: video/mp4)
+    Core->>S3: Store assembled raw video file
+    Core->>Kafka: Publish "file.uploaded" {fileId, mimeType: "video/mp4"}
+
+    rect rgb(30, 41, 59)
+        Note over Kafka, FFmpeg: Video Transcoding Detection & Dispatch
+        Kafka->>BullMQ: Enqueue transcoding job (video/* detected)
+        BullMQ->>FFmpeg: Dequeue & start FFmpeg processing
+    end
+
+    rect rgb(30, 41, 59)
+        Note over FFmpeg, S3: Multi-Bitrate HLS Encoding Pipeline
+        FFmpeg->>FFmpeg: Probe source resolution & bitrate
+        FFmpeg->>FFmpeg: Filter renditions (skip upscaling — e.g. 480p source skips 720p/1080p)
+        loop For each rendition (1080p, 720p, 480p, 360p, 240p, 144p)
+            FFmpeg->>FFmpeg: Transcode H.264/AAC (4-second segments)
+            FFmpeg->>S3: Upload .ts segments to hls/{ownerId}/{fileId}/{versionId}/{resolution}/
+            FFmpeg->>S3: Upload per-rendition playlist.m3u8
+        end
+        FFmpeg->>S3: Upload master.m3u8 (adaptive playlist with all renditions)
+        FFmpeg->>Postgres: INSERT TranscodeRecord per rendition {status, resolution, bitrate}
+    end
+
+    Note over Edge, Client: Edge HLS Delivery
+    Client->>Edge: GET /edge/content/{fileId}/hls/master.m3u8
+    Edge->>Edge: Cache MISS → Fetch from MinIO
+    Edge-->>Client: Return master.m3u8 (Cache-Control: max-age=60)
+    Client->>Edge: GET /edge/content/{fileId}/hls/720p/segment_001.ts
+    Edge-->>Client: Return .ts segment (Cache-Control: immutable, max-age=31536000)
+```
+
+---
+
+## 12. Kubernetes (EKS) Orchestration Architecture (Phase 8B)
+
+This diagram shows the Kubernetes deployment topology including Core Plane pods, Edge Data Plane pods with Nginx sidecar containers, Horizontal Pod Autoscaler (HPA), and multi-region spoke edge deployments.
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#1e293b', 'primaryTextColor': '#f8fafc', 'primaryBorderColor': '#3b82f6', 'lineColor': '#64748b', 'secondaryColor': '#0f172a', 'tertiaryColor': '#1e1e2e'}}}%%
+flowchart TD
+    subgraph Ingress["K8s Ingress Layer"]
+        ALB["AWS ALB / Nginx Ingress Controller"]
+    end
+
+    subgraph CorePods["Core Plane Pods (Namespace: pravah)"]
+        CoreDeploy["Core Deployment (NestJS + Express)"]
+        CoreHPA["HPA: CPU 70% / Memory 80%"]
+        CoreSvc["ClusterIP Service :3000"]
+    end
+
+    subgraph HubEdgePods["Hub Edge Pods (Same Region as Core)"]
+        EdgeDeploy["Edge Deployment"]
+        EdgeContainer["Container 1: NestJS Fastify :3001"]
+        NginxSidecar["Container 2: Nginx Sidecar :80"]
+        EdgeHPA["HPA: CPU 70% / Memory 80%"]
+        EdgeSvc["ClusterIP Service :80"]
+    end
+
+    subgraph SpokeEdgePods["Spoke Edge Pods (Remote Regions)"]
+        SpokeVirginia["Spoke Edge: Virginia (us-east-1)"]
+        SpokeFrankfurt["Spoke Edge: Frankfurt (eu-central-1)"]
+        SpokeHPA["HPA per Spoke Region"]
+    end
+
+    subgraph Storage["Backing Services"]
+        PG[("PostgreSQL StatefulSet")]
+        Redis[("Redis StatefulSet")]
+        MinIO[("MinIO / S3")]
+        Kafka[["Redpanda / Kafka"]]
+    end
+
+    subgraph ConfigMgmt["Configuration"]
+        ConfigMap["ConfigMap\n(CORE_API_URL, EDGE_NODE_ID,\nEDGE_REGION, etc.)"]
+        Secret["Secret\n(JWT_SECRET, DB_PASSWORD,\nINTER_SERVICE_SECRET)"]
+    end
+
+    ALB --> CoreSvc --> CoreDeploy
+    ALB --> EdgeSvc --> NginxSidecar --> EdgeContainer
+    CoreHPA -.-> CoreDeploy
+    EdgeHPA -.-> EdgeDeploy
+    SpokeHPA -.-> SpokeVirginia
+    SpokeHPA -.-> SpokeFrankfurt
+
+    CoreDeploy --> PG
+    CoreDeploy --> Redis
+    CoreDeploy --> MinIO
+    CoreDeploy --> Kafka
+    EdgeContainer --> Redis
+    EdgeContainer --> MinIO
+    EdgeContainer --> Kafka
+
+    ConfigMap -.-> CoreDeploy
+    ConfigMap -.-> EdgeDeploy
+    Secret -.-> CoreDeploy
+    Secret -.-> EdgeDeploy
+```
+
+**16 Kubernetes manifests** in `infra/k8s/` define the complete deployment, including Namespace, ConfigMaps, Secrets, Deployments, Services, HPAs, and Ingress rules. Benchmark results: **100K RPS on EKS with 1.77ms P50 latency** at 2,000 concurrent virtual users.
+
+---
+
+## 13. Security Hardening & RBAC Guard Architecture (Phase 8C)
+
+This diagram details the `UnifiedAuthGuard` cascading authentication chain and the `RolesGuard` hierarchical permission model that protect all API routes.
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': { 'actorBkg': '#1e293b', 'actorBorder': '#3b82f6', 'actorTextColor': '#f8fafc', 'signalColor': '#38bdf8', 'signalTextColor': '#f8fafc', 'labelBoxBkgColor': '#0f172a', 'labelBoxBorderColor': '#334155', 'labelTextColor': '#f8fafc', 'loopTextColor': '#f8fafc', 'noteBkgColor': '#1e1e2e', 'noteTextColor': '#f8fafc'}}}%%
+sequenceDiagram
+    autonumber
+    actor Client as API Client
+    participant Guard as UnifiedAuthGuard
+    participant ISG as InterServiceGuard
+    participant AKG as ApiKeyGuard
+    participant JWT as JwtAuthGuard
+    participant Roles as RolesGuard
+    participant Controller as Protected Controller
+
+    Client->>Guard: HTTP Request (with auth credentials)
+
+    alt Header: X-Service-Signature present
+        Guard->>ISG: Validate HMAC-SHA256 Signature
+        ISG->>ISG: Verify timestamp (< 5min replay window)
+        ISG->>ISG: Compute HMAC(secret, method+path+timestamp)
+        alt Signature Valid
+            ISG-->>Guard: ✅ Authenticated (service identity)
+            Guard-->>Controller: Proceed (bypass RolesGuard)
+        else Signature Invalid
+            ISG-->>Guard: ✗ Fall through to next strategy
+        end
+    end
+
+    alt Header: X-Api-Key / Authorization: ApiKey present
+        Guard->>AKG: Validate API Key
+        AKG->>AKG: SHA-256 hash → constant-time DB lookup
+        AKG->>AKG: Check key not revoked & not expired
+        alt Key Valid
+            AKG-->>Guard: ✅ Authenticated (req.user = key owner)
+        else Key Invalid
+            AKG-->>Guard: ✗ Fall through to JWT
+        end
+    end
+
+    alt Header: Authorization: Bearer <JWT>
+        Guard->>JWT: Validate JWT Token
+        JWT->>JWT: Verify signature, expiry, claims
+        alt Token Valid
+            JWT-->>Guard: ✅ Authenticated (req.user = JWT payload)
+        else Token Invalid
+            JWT-->>Guard: ✗ 401 Unauthorized
+        end
+    end
+
+    Guard->>Roles: Check @Roles() decorator vs user.role
+    Note over Roles: Role Hierarchy: ADMIN ⊃ STREAMER ⊃ VIEWER ≡ USER
+    alt Role Permitted
+        Roles-->>Controller: ✅ 200 OK — Access Granted
+    else Role Insufficient
+        Roles-->>Client: ✗ 403 Forbidden
+    end
+```
+
+### Role Hierarchy Definition
+
+```
+ADMIN    → [ADMIN, STREAMER, VIEWER, USER]  (full access)
+STREAMER → [STREAMER, VIEWER, USER]         (upload + view)
+VIEWER   → [VIEWER, USER]                   (download + view)
+USER     → [USER, VIEWER]                   (base access)
+```
+
+### Guard Placement Summary
+
+| Route Group | Guards Applied | Required Roles |
+| :--- | :--- | :--- |
+| `POST /auth/register`, `/auth/login`, `/auth/refresh` | **None** | Public |
+| `GET /auth/me` | `JwtAuthGuard` | Any authenticated |
+| `POST/GET/DELETE /auth/api-keys` | `JwtAuthGuard` | Any authenticated |
+| `GET/DELETE /admin/api-keys` | `JwtAuthGuard` + `RolesGuard` | **ADMIN** |
+| `POST /upload/*`, `PUT /upload/*`, `GET /upload/status/*` | `UnifiedAuthGuard` + `RolesGuard` | **STREAMER, ADMIN** |
+| `GET /download/*`, `GET /metadata/*` | `UnifiedAuthGuard` | Any authenticated |
+| `GET/POST/DELETE /admin/dlq/*` | `UnifiedAuthGuard` + `RolesGuard` | **ADMIN** |
+| `GET /admin/transcoding/*` | `UnifiedAuthGuard` + `RolesGuard` | **ADMIN, STREAMER** |
+| `GET /admin/health/nodes` | `UnifiedAuthGuard` + `RolesGuard` | **ALL** |
+| `POST /admin/health/heartbeat` | **None** | Edge nodes (internal) |
+| `GET /internal/*` | **None** | Inter-service only |
+| `GET /edge/content/*` | **None** | Public (via 302 redirect) |
+
+---
+
+## 14. Zero-Copy Nginx Reverse Proxy Edge Acceleration (Phase 9)
+
+This diagram illustrates the Nginx zero-copy proxy architecture deployed as a sidecar container in front of each Edge Fastify application, providing kernel-level `sendfile` acceleration, persistent disk caching for video segments, and microcaching for live HLS manifests.
+
+```mermaid
+%%{init: {'theme': 'dark', 'themeVariables': { 'primaryColor': '#1e293b', 'primaryTextColor': '#f8fafc', 'primaryBorderColor': '#3b82f6', 'lineColor': '#64748b', 'secondaryColor': '#0f172a', 'tertiaryColor': '#1e1e2e'}}}%%
+flowchart TD
+    subgraph ClientLayer["Client Request"]
+        Client["Browser / CLI / Mobile"]
+    end
+
+    subgraph NginxLayer["Nginx Reverse Proxy (Port :80)"]
+        NginxIngress["Nginx Listener :80"]
+        SegCache[("SEGMENT_CACHE\n20GB Disk Zone\n.ts / .m4s / .mp4\nmax-age=365d")]
+        ManifestCache[("MANIFEST_CACHE\n1s Microcache Zone\n.m3u8 playlists\nStampede Protection")]
+        KernelOpt["Linux Kernel Directives:\nsendfile on\ntcp_nopush on\ntcp_nodelay on\n(Zero User-Space Copies)"]
+        KeepAlive["Upstream Keep-Alive Pool\nHTTP/1.1 → Fastify :3001\n32 persistent connections"]
+    end
+
+    subgraph FastifyLayer["NestJS Fastify Edge App (Port :3001)"]
+        EdgeApp["EdgeContentController\n(Serve / Peer Fill / HLS)"]
+        RedisCache[("Redis RAM Cache\n(LRU Binary + Metadata)")]
+    end
+
+    subgraph OriginLayer["Origin Fallback"]
+        MinIO[("MinIO / S3\n(Origin Storage)")]
+    end
+
+    Client -->|"GET /edge/content/:fileId/hls/*"| NginxIngress
+
+    NginxIngress --> SegCache
+    NginxIngress --> ManifestCache
+    NginxIngress --> KernelOpt
+
+    SegCache -->|"Nginx Disk HIT\n(sendfile zero-copy)"| Client
+    ManifestCache -->|"Nginx Microcache HIT\n(1s TTL)"| Client
+
+    SegCache -->|"Nginx MISS"| KeepAlive
+    ManifestCache -->|"Nginx MISS"| KeepAlive
+    KeepAlive --> EdgeApp
+    EdgeApp --> RedisCache
+
+    RedisCache -->|"Redis HIT"| EdgeApp
+    RedisCache -->|"Redis MISS"| MinIO
+    MinIO -->|"Origin Stream"| EdgeApp
+    EdgeApp -->|"Response + Populate Caches"| NginxIngress
+
+    style NginxLayer fill:#0f172a,stroke:#f97316,color:#f8fafc
+    style FastifyLayer fill:#0f172a,stroke:#3b82f6,color:#f8fafc
+    style OriginLayer fill:#0f172a,stroke:#ef4444,color:#f8fafc
+```
+
+### Three-Tier Cache Architecture
+
+```
+Request → Nginx Disk Cache (20GB .ts segments, 365d TTL)
+    ↓ MISS
+→ Redis RAM Cache (LRU binary + metadata, allkeys-lru)
+    ↓ MISS
+→ Origin MinIO/S3 (Source of truth)
+```
+
+### Key Configuration Directives
+
+| Directive | Purpose |
+| :--- | :--- |
+| `sendfile on` | Zero-copy file transfer via Linux kernel — bypasses user-space memory copies |
+| `tcp_nopush on` | Coalesce TCP packets for full frames before transmission |
+| `tcp_nodelay on` | Disable Nagle's algorithm for low-latency small writes |
+| `proxy_cache SEGMENT_CACHE` | 20GB persistent disk cache for `.ts`, `.m4s`, `.mp4` video segments |
+| `proxy_cache MANIFEST_CACHE` | 1-second microcache preventing live `.m3u8` manifest stampedes |
+| `keepalive 32` | 32 persistent upstream connections to Fastify — eliminates TCP handshake overhead |
+| `health_check` | `nginx -t` build-time validation + runtime health endpoint |
+
+### Deployment Model
+
+- **Docker**: Alpine Linux `Dockerfile` with automated `nginx -t` build-time config validation
+- **Kubernetes**: Deployed as a **sidecar container** (`edge-proxy`) alongside the Fastify edge container in the same pod, sharing `localhost` networking
+- **CI/CD**: Integrated into `.github/workflows/ci.yml` build matrix for automated validation

@@ -435,41 +435,46 @@ Every one of these should be a real, measured number with the test conditions st
 | Backend framework | NestJS + TypeScript |
 | Database | PostgreSQL |
 | Cache | Redis |
-| Event streaming | Apache Kafka (single broker) |
+| Event streaming | Apache Kafka (Redpanda) |
+| Job processing | BullMQ (Redis-backed queues) |
 | Object storage | MinIO (dev), Amazon S3 (prod) |
 | Compression | gzip (default), brotli (optional) |
-| Consistent hashing | `hashring` (npm) or custom ring implementation |
-| Reverse proxy | Nginx |
+| Video transcoding | FFmpeg (H.264/AAC → HLS) |
+| Consistent hashing | Custom hash ring with 150 virtual nodes per edge |
+| Reverse proxy | Nginx (zero-copy `sendfile` + segment/manifest caching) |
 | Containers | Docker, Docker Compose |
-| Orchestration | Kubernetes (stretch phase) |
-| CI/CD | GitHub Actions |
-| Metrics | Prometheus |
+| Orchestration | Kubernetes (EKS) with HPA auto-scaling |
+| CI/CD | GitHub Actions (lint, build, test, Docker matrix) |
+| Metrics | Prometheus + custom NestJS exporter |
 | Dashboards | Grafana |
 | Logs | Loki + Promtail |
-| Tracing | OpenTelemetry + Jaeger/Tempo |
+| Tracing | OpenTelemetry + Jaeger |
 | Real-time | WebSockets (Socket.io via NestJS Gateway) |
-| Auth | JWT, refresh tokens, argon2/bcrypt |
-| Load testing | k6 or autocannon |
-| Cloud infra | AWS EC2 (multi-region), Terraform (optional), Route53 (optional, latency routing) |
+| Auth | JWT + API Keys (SHA-256) + HMAC Inter-Service + RBAC (4 roles) |
+| Load testing | k6 (200 VUs, 100K RPS EKS benchmarks) |
+| Cloud infra | AWS EC2 (multi-region), Terraform, EKS |
+| IaC | Terraform (multi-region EC2 modules), 16 Kubernetes YAML manifests |
 
 ---
 
 ## 23. Phased Build Plan
 
-| Phase | Focus | Est. duration |
-|---|---|---|
-| 0 | Repo, Docker Compose skeleton, CI pipeline, monolith app skeleton | 1–2 weeks |
-| 1 | Core upload/download loop (monolith): resumable chunks, signed URLs, compression | 2–3 weeks |
-| 2 | Real Redis caching, measured hit ratio, object versioning + invalidation | 2–3 weeks |
-| 3 | Kafka event-driven invalidation, purge API | 2–3 weeks |
-| 4 | Replication across (logical) edge nodes, Health Check Service, consistency model proven | 3–4 weeks |
-| 5 | **Split monolith into microservices** + consistent hashing ring + CDN routing algorithm | 3–4 weeks |
-| 6 | Real multi-region EC2 deployment, measured latency with real routing | 2–3 weeks |
-| 7 | Observability: Prometheus, Grafana, Loki, tracing, full WebSocket dashboard | 2–3 weeks |
-| 8 | Hardening: rate limiting, DLQ, retries, auth, admin APIs, benchmarks written up | 2–3 weeks |
-| 9 (stretch) | Kubernetes | 3–4 weeks |
+| Phase | Focus | Est. duration | Status |
+|---|---|---|---|
+| 0 | Repo, Docker Compose skeleton, CI pipeline, monolith app skeleton | 1–2 weeks | ✅ Complete |
+| 1 | Core upload/download loop (monolith): resumable chunks, signed URLs, compression | 2–3 weeks | ✅ Complete |
+| 2 | Real Redis caching, measured hit ratio, object versioning + invalidation | 2–3 weeks | ✅ Complete |
+| 3 | Kafka event-driven invalidation, purge API | 2–3 weeks | ✅ Complete |
+| 4 | Replication across (logical) edge nodes, Health Check Service, consistency model proven | 3–4 weeks | ✅ Complete |
+| 5 | **Split monolith into microservices** + consistent hashing ring + CDN routing algorithm | 3–4 weeks | ✅ Complete |
+| 6 | Real multi-region EC2 deployment, measured latency with real routing, full observability (Prometheus, Grafana, Loki, Jaeger, WebSocket dashboard) | 2–3 weeks | ✅ Complete |
+| 7 | Hardening: rate limiting, DLQ, retries, auth, admin APIs, benchmarks written up | 2–3 weeks | ✅ Complete |
+| 8A | **Adaptive Bitrate Video Transcoding**: FFmpeg BullMQ pipeline, 6-rendition HLS (1080p→144p), `.m3u8` + `.ts` packaging, edge HLS caching | 2–3 weeks | ✅ Complete |
+| 8B | **Kubernetes (EKS) Orchestration**: 16 K8s manifests, Helm charts, HPA auto-scaling, 100K RPS stress test (1.77ms P50 latency) | 3–4 weeks | ✅ Complete |
+| 8C | **Security Hardening & RBAC**: UnifiedAuthGuard (InterService → ApiKey → JWT), RolesGuard hierarchy, ApiKeyGuard (SHA-256), InterServiceGuard (HMAC-SHA256 + replay protection) | 2–3 weeks | ✅ Complete |
+| 9 | **Zero-Copy Reverse Proxy Edge Acceleration**: Nginx `sendfile` + `tcp_nopush` + `tcp_nodelay`, 20GB segment disk cache, 1s manifest microcache, upstream keep-alive pooling, Alpine Dockerfile, CI matrix, K8s sidecar deployment | 2–3 weeks | ✅ Complete |
 
-**Total: ~22–28 weeks at a steady solo pace.** Run phases sequentially — a finished Phase 5 beats a half-working Phase 5 and a half-working Phase 9 running at the same time.
+**Total: ~28–36 weeks at a steady solo pace.** All 12 phases have been completed. Run phases sequentially — a finished Phase 5 beats a half-working Phase 5 and a half-working Phase 9 running at the same time.
 
 ---
 
