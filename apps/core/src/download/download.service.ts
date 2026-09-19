@@ -37,6 +37,7 @@ export class DownloadService {
     private readonly edgeCacheService: EdgeCacheService,
   ) {}
 
+  // checks is the file cacheable
   private isCacheable(mimeType: string, size: number): boolean {
     const MAX_CACHE_SIZE =
       this.configService.get<number>('MAX_CACHE_SIZE') || 20 * 1024 * 1024;
@@ -57,6 +58,7 @@ export class DownloadService {
     return cacheablePrefixes.some((prefix) => mimeType.startsWith(prefix));
   }
 
+  // to get the current version of the file
   async getCurrentVersion(userId: string, fileId: string): Promise<number> {
     const file = await this.prisma.file.findUnique({
       where: { id: fileId },
@@ -78,6 +80,7 @@ export class DownloadService {
     return file.currentVersion.versionNumber;
   }
 
+  // RAM/Cache mein pade hue raw file data (Buffer) ko HTTP response ke liye ready karna (Full stream or partial stream)
   private formatCacheHit(
     cachedBinary: Buffer,
     metadata: {
@@ -122,6 +125,7 @@ export class DownloadService {
     };
   }
 
+  // konsa active version serve karna hai wo validate karna
   private async resolveCurrentVersion(userId: string, fileId: string) {
     let currentVersion = await this.edgeCacheService.getCurrentVersion(fileId);
 
@@ -151,6 +155,7 @@ export class DownloadService {
     return currentVersion;
   }
 
+  // file download request ko super-fast aur smart tareeke se serve karne ka engine hai.
   async processDownload(
     userId: string,
     fileId: string,
