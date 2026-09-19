@@ -169,7 +169,7 @@ export class MetadataService {
     if (!file) throw new NotFoundException('File not found');
 
     const fileVersion = await this.prisma.fileVersion.findFirst({
-      where: { fileId, versionNumber },
+      where: { fileId, versionNumber }, // same as where: { fileId: fileId, versionNumber: versionNumber }
     });
     if (!fileVersion) throw new NotFoundException('Version not found');
 
