@@ -4,9 +4,9 @@ import { Job } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { MinioService } from '../common/minio/minio.service';
 import {
-  EdgeCacheService,
+  CacheManagerService,
   CacheMetadata,
-} from '../common/edge-cache/edge-cache.service';
+} from '../common/cache-manager/cache-manager.service';
 import { KafkaService } from '../common/kafka/kafka.service';
 import { TelemetryGateway } from '../telemetry/telemetry.gateway';
 import { MetricsService } from '../metrics/metrics.service';
@@ -20,7 +20,7 @@ export class ReplicationProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly minioService: MinioService,
-    private readonly edgeCacheService: EdgeCacheService,
+    private readonly cacheManagerService: CacheManagerService,
     private readonly kafkaService: KafkaService,
     private readonly telemetryGateway: TelemetryGateway,
     private readonly metricsService: MetricsService,
@@ -106,7 +106,7 @@ export class ReplicationProcessor extends WorkerHost {
         contentEncoding: version.isCompressed ? 'gzip' : undefined,
       };
 
-      await this.edgeCacheService.cacheFile(
+      await this.cacheManagerService.cacheFile(
         fileId,
         version.versionNumber.toString(),
         metadata,

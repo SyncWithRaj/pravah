@@ -9,7 +9,7 @@ import { KafkaModule } from '../common/kafka/kafka.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { MinioModule } from '../common/minio/minio.module';
 import { HealthCheckModule } from '../common/health-check/health-check.module';
-import { EdgeCacheModule } from '../common/edge-cache/edge-cache.module';
+import { CacheManagerModule } from '../common/cache-manager/cache-manager.module';
 import { AuthModule } from '../auth/auth.module';
 
 @Module({
@@ -19,7 +19,7 @@ import { AuthModule } from '../auth/auth.module';
     PrismaModule,
     MinioModule,
     HealthCheckModule,
-    EdgeCacheModule,
+    CacheManagerModule,
     AuthModule,
 
     BullModule.forRootAsync({

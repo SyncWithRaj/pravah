@@ -9,16 +9,16 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
-import { EdgeCacheService } from './edge-cache.service';
+import { CacheManagerService } from './cache-manager.service';
 import { KafkaService } from '../kafka/kafka.service';
 import { TelemetryGateway } from '../../telemetry/telemetry.gateway';
 
 @Controller(['admin/cache', 'metadata'])
-export class EdgeCacheController {
-  private readonly logger = new Logger(EdgeCacheController.name);
+export class CacheManagerController {
+  private readonly logger = new Logger(CacheManagerController.name);
 
   constructor(
-    private readonly edgeCacheService: EdgeCacheService,
+    private readonly cacheManagerService: CacheManagerService,
     private readonly kafkaService: KafkaService,
     @Inject(forwardRef(() => TelemetryGateway))
     private readonly telemetryGateway: TelemetryGateway,
@@ -63,7 +63,7 @@ export class EdgeCacheController {
       this.logger.log(
         `Received cache.invalidate event for file: ${fileId}. Evicting from RAM...`,
       );
-      await this.edgeCacheService.evictFile(fileId);
+      await this.cacheManagerService.evictFile(fileId);
     }
   }
 }

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument */
+/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access */
 import { Test, TestingModule } from '@nestjs/testing';
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { ApiKeyGuard } from './api-key.guard';
@@ -61,6 +61,7 @@ describe('ApiKeyGuard', () => {
   });
 
   it('should throw UnauthorizedException when API key is revoked / inactive', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     jest.spyOn(prisma.apiKey, 'findUnique').mockResolvedValue({
       id: 'key-1',
       name: 'Revoked Key',
@@ -84,6 +85,7 @@ describe('ApiKeyGuard', () => {
 
   it('should throw UnauthorizedException when API key has expired', async () => {
     const pastDate = new Date(Date.now() - 100000);
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     jest.spyOn(prisma.apiKey, 'findUnique').mockResolvedValue({
       id: 'key-2',
       name: 'Expired Key',
@@ -109,6 +111,7 @@ describe('ApiKeyGuard', () => {
     const rawKey = 'prv_live_supervalidkey1234567890';
     const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex');
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
     jest.spyOn(prisma.apiKey, 'findUnique').mockResolvedValue({
       id: 'key-3',
       name: 'Production Key',

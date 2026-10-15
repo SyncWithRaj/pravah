@@ -19,8 +19,8 @@ export interface CacheMetadata {
 }
 
 @Injectable()
-export class EdgeCacheService implements OnModuleInit, OnModuleDestroy {
-  private readonly logger = new Logger(EdgeCacheService.name);
+export class CacheManagerService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(CacheManagerService.name);
   private redis!: Redis;
   private readonly maxCacheSize: number;
 

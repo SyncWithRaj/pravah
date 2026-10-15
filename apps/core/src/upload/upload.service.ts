@@ -12,7 +12,7 @@ import { CompleteUploadDto } from './dto/complete-upload.dto';
 import { FileStatus, ChunkStatus } from '@prisma/client';
 import { KafkaService } from '../common/kafka/kafka.service';
 import { ConfigService } from '@nestjs/config';
-import { EdgeCacheService } from '../common/edge-cache/edge-cache.service';
+import { CacheManagerService } from '../common/cache-manager/cache-manager.service';
 import { TranscodingService } from '../transcoding/transcoding.service';
 
 @Injectable()
@@ -22,7 +22,7 @@ export class UploadService {
     private readonly minioService: MinioService,
     private readonly kafkaService: KafkaService,
     private readonly configService: ConfigService,
-    private readonly edgeCacheService: EdgeCacheService,
+    private readonly cacheManagerService: CacheManagerService,
     private readonly transcodingService: TranscodingService,
   ) {}
 
@@ -327,7 +327,7 @@ export class UploadService {
         },
       });
 
-      await this.edgeCacheService
+      await this.cacheManagerService
         .setCurrentVersion(file.id, version.id)
         .catch((e: Error) => {
           console.warn(

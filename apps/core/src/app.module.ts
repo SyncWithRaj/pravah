@@ -9,7 +9,7 @@ import { UploadModule } from './upload/upload.module';
 import { DownloadModule } from './download/download.module';
 import { MetadataModule } from './metadata/metadata.module';
 import { KafkaModule } from './common/kafka/kafka.module';
-import { EdgeCacheModule } from './common/edge-cache/edge-cache.module';
+import { CacheManagerModule } from './common/cache-manager/cache-manager.module';
 import { HealthCheckModule } from './common/health-check/health-check.module';
 import { ReplicationModule } from './replication/replication.module';
 import { RoutingModule } from './common/routing/routing.module';
@@ -30,7 +30,7 @@ import { TranscodingModule } from './transcoding/transcoding.module';
 
     MinioModule,
     KafkaModule,
-    EdgeCacheModule,
+    CacheManagerModule,
     HealthCheckModule,
     ReplicationModule,
     RoutingModule,

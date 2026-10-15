@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { EdgeContentController } from './edge-content.controller';
-import { EdgeCacheModule } from '../common/edge-cache/edge-cache.module';
+import { CacheManagerModule } from '../common/cache-manager/cache-manager.module';
 import { MinioModule } from '../common/minio/minio.module';
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
-  imports: [EdgeCacheModule, MinioModule, PrismaModule],
+  imports: [CacheManagerModule, MinioModule, PrismaModule],
   controllers: [EdgeContentController],
 })
 export class EdgeContentModule {}

@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { Readable } from 'stream';
-import { EdgeCacheService } from '../common/edge-cache/edge-cache.service';
+import { CacheManagerService } from '../common/cache-manager/cache-manager.service';
 import { MinioService } from '../common/minio/minio.service';
 import { PrismaService } from '../prisma/prisma.service';
 import * as crypto from 'crypto';
@@ -22,7 +22,7 @@ export class EdgeContentController {
   private readonly logger = new Logger(EdgeContentController.name);
 
   constructor(
-    private readonly edgeCacheService: EdgeCacheService,
+    private readonly cacheManagerService: CacheManagerService,
     private readonly minioService: MinioService,
     private readonly prisma: PrismaService,
   ) {}
@@ -60,7 +60,7 @@ export class EdgeContentController {
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', cacheControl);
 
-    const cachedBuffer = await this.edgeCacheService.getHlsContent(
+    const cachedBuffer = await this.cacheManagerService.getHlsContent(
       fileId,
       versionStr,
       rawSubpath,
@@ -104,7 +104,7 @@ export class EdgeContentController {
 
       const fullBuffer = Buffer.concat(chunks);
 
-      void this.edgeCacheService
+      void this.cacheManagerService
         .cacheHlsContent(fileId, versionStr, rawSubpath, fullBuffer, ttlSeconds)
         .catch((e: Error) =>
           this.logger.error(`Failed to cache HLS ${rawSubpath}: ${e.message}`),
@@ -132,7 +132,11 @@ export class EdgeContentController {
 
     const versionStr = version.toString();
 
-    const buffer = await this.edgeCacheService.getBinary(fileId, versionStr, 0);
+    const buffer = await this.cacheManagerService.getBinary(
+      fileId,
+      versionStr,
+      0,
+    );
     if (buffer) {
       this.logger.log(
         `[Cache Hit] Served file ${fileId} v${version} from Edge Cache`,
@@ -161,7 +165,7 @@ export class EdgeContentController {
     }
 
     const lockValue = crypto.randomUUID();
-    const acquiredLock = await this.edgeCacheService.acquireStampedeLock(
+    const acquiredLock = await this.cacheManagerService.acquireStampedeLock(
       fileId,
       versionStr,
       lockValue,
@@ -192,7 +196,7 @@ export class EdgeContentController {
             };
             void (async () => {
               try {
-                await this.edgeCacheService.cacheFile(
+                await this.cacheManagerService.cacheFile(
                   fileId,
                   versionStr,
                   metadata,
@@ -202,7 +206,7 @@ export class EdgeContentController {
                   `Populated Edge Cache for ${fileId} v${version}`,
                 );
               } finally {
-                await this.edgeCacheService.releaseStampedeLock(
+                await this.cacheManagerService.releaseStampedeLock(
                   fileId,
                   versionStr,
                   lockValue,
@@ -211,7 +215,7 @@ export class EdgeContentController {
             })();
           });
           minioStream.on('error', () => {
-            void this.edgeCacheService.releaseStampedeLock(
+            void this.cacheManagerService.releaseStampedeLock(
               fileId,
               versionStr,
               lockValue,
@@ -223,7 +227,7 @@ export class EdgeContentController {
           );
           return responseStream.pipe(res);
         } else {
-          await this.edgeCacheService.releaseStampedeLock(
+          await this.cacheManagerService.releaseStampedeLock(
             fileId,
             versionStr,
             lockValue,
@@ -231,7 +235,7 @@ export class EdgeContentController {
           return minioStream.pipe(res);
         }
       } catch {
-        await this.edgeCacheService.releaseStampedeLock(
+        await this.cacheManagerService.releaseStampedeLock(
           fileId,
           versionStr,
           lockValue,

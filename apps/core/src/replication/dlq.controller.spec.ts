@@ -86,11 +86,7 @@ describe('DlqController', () => {
         },
       ];
 
-      replicationService.getDLQEvents.mockResolvedValue(
-        mockEvents as unknown as Awaited<
-          ReturnType<ReplicationService['getDLQEvents']>
-        >,
-      );
+      replicationService.getDLQEvents.mockResolvedValue(mockEvents);
 
       const result = await controller.getAllDLQEvents();
 
@@ -117,11 +113,7 @@ describe('DlqController', () => {
         edgeNode: { id: 'edge-1', name: 'Mumbai Edge' },
       };
 
-      replicationService.getDLQEventById.mockResolvedValue(
-        mockEvent as unknown as Awaited<
-          ReturnType<ReplicationService['getDLQEventById']>
-        >,
-      );
+      replicationService.getDLQEventById.mockResolvedValue(mockEvent);
 
       const result = await controller.getDLQEventById('dlq-1');
       expect(result.id).toBe('dlq-1');
@@ -157,11 +149,7 @@ describe('DlqController', () => {
         { id: 'dlq-2', fileId: 'file-100' },
       ];
 
-      replicationService.getDLQEvents.mockResolvedValue(
-        mockEvents as unknown as Awaited<
-          ReturnType<ReplicationService['getDLQEvents']>
-        >,
-      );
+      replicationService.getDLQEvents.mockResolvedValue(mockEvents);
       replicationService.replayDLQEvent.mockResolvedValue({
         success: true,
         message: 'Replayed',

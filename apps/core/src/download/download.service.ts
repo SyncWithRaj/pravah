@@ -9,7 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MinioService } from '../common/minio/minio.service';
 import { ConfigService } from '@nestjs/config';
 import { Readable, PassThrough } from 'stream';
-import { EdgeCacheService } from '../common/edge-cache/edge-cache.service';
+import { CacheManagerService } from '../common/cache-manager/cache-manager.service';
 import * as crypto from 'crypto';
 
 export interface DownloadResult {
@@ -34,7 +34,7 @@ export class DownloadService {
     private readonly prisma: PrismaService,
     private readonly minioService: MinioService,
     private readonly configService: ConfigService,
-    private readonly edgeCacheService: EdgeCacheService,
+    private readonly cacheManagerService: CacheManagerService,
   ) {}
 
   // checks is the file cacheable
@@ -127,7 +127,8 @@ export class DownloadService {
 
   // konsa active version serve karna hai wo validate karna
   private async resolveCurrentVersion(userId: string, fileId: string) {
-    let currentVersion = await this.edgeCacheService.getCurrentVersion(fileId);
+    let currentVersion =
+      await this.cacheManagerService.getCurrentVersion(fileId);
 
     if (!currentVersion) {
       const file = await this.prisma.file.findUnique({
@@ -149,7 +150,7 @@ export class DownloadService {
 
       currentVersion = file.currentVersionId || 'v1';
 
-      await this.edgeCacheService.setCurrentVersion(fileId, currentVersion);
+      await this.cacheManagerService.setCurrentVersion(fileId, currentVersion);
     }
 
     return currentVersion;
@@ -163,7 +164,10 @@ export class DownloadService {
     ifNoneMatch?: string,
     rangeHeader?: string,
   ): Promise<DownloadResult> {
-    let metadata = await this.edgeCacheService.getMetadata(fileId, versionId);
+    let metadata = await this.cacheManagerService.getMetadata(
+      fileId,
+      versionId,
+    );
 
     if (metadata) {
       if (metadata.ownerId !== userId) {
@@ -228,7 +232,7 @@ export class DownloadService {
       }
     }
 
-    let cachedBinary = await this.edgeCacheService.getBinary(
+    let cachedBinary = await this.cacheManagerService.getBinary(
       fileId,
       versionId,
       metadata.size,
@@ -245,20 +249,20 @@ export class DownloadService {
     const lockValue = crypto.randomUUID();
 
     if (isEligible) {
-      locked = await this.edgeCacheService.acquireStampedeLock(
+      locked = await this.cacheManagerService.acquireStampedeLock(
         fileId,
         versionId,
         lockValue,
       );
 
       if (!locked) {
-        const cacheAppeared = await this.edgeCacheService.waitForCache(
+        const cacheAppeared = await this.cacheManagerService.waitForCache(
           fileId,
           versionId,
         );
 
         if (cacheAppeared) {
-          cachedBinary = await this.edgeCacheService.getBinary(
+          cachedBinary = await this.cacheManagerService.getBinary(
             fileId,
             versionId,
             metadata.size,
@@ -268,7 +272,7 @@ export class DownloadService {
           }
         }
 
-        locked = await this.edgeCacheService.acquireStampedeLock(
+        locked = await this.cacheManagerService.acquireStampedeLock(
           fileId,
           versionId,
           lockValue,
@@ -306,7 +310,7 @@ export class DownloadService {
       }
     } catch (err) {
       if (locked) {
-        await this.edgeCacheService.releaseStampedeLock(
+        await this.cacheManagerService.releaseStampedeLock(
           fileId,
           versionId,
           lockValue,
@@ -336,13 +340,13 @@ export class DownloadService {
       cacheStream.on('data', (chunk: Buffer) => chunks.push(chunk));
       cacheStream.on('end', () => {
         const fullBuffer = Buffer.concat(chunks);
-        this.edgeCacheService
+        this.cacheManagerService
           .cacheFile(fileId, versionId, metadata, fullBuffer)
           .catch((e: Error) => {
             this.logger.error(`Background cache populate failed: ${e.message}`);
           })
           .finally(() => {
-            void this.edgeCacheService.releaseStampedeLock(
+            void this.cacheManagerService.releaseStampedeLock(
               fileId,
               versionId,
               lockValue,
@@ -350,7 +354,7 @@ export class DownloadService {
           });
       });
       cacheStream.on('error', () => {
-        void this.edgeCacheService.releaseStampedeLock(
+        void this.cacheManagerService.releaseStampedeLock(
           fileId,
           versionId,
           lockValue,
@@ -360,7 +364,7 @@ export class DownloadService {
       resultStream = clientStream;
     }
 
-    this.edgeCacheService.emitCacheMiss(fileId, Date.now() - startTime);
+    this.cacheManagerService.emitCacheMiss(fileId, Date.now() - startTime);
 
     return {
       stream: resultStream,
@@ -430,13 +434,16 @@ export class DownloadService {
     }
 
     const storagePath = file.currentVersion?.storagePath ?? file.storagePath;
+    if (!storagePath) {
+      throw new NotFoundException('Storage path not found for file');
+    }
     const expiresIn = parseInt(
       this.configService.get<string>('SIGNED_URL_EXPIRES_IN', '900'),
       10,
     );
 
     const url = await this.minioService.generateSignedUrl(
-      storagePath!,
+      storagePath,
       expiresIn,
       forceDownload ? file.name : undefined,
     );
