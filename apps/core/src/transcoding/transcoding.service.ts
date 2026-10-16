@@ -1,6 +1,12 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { Role } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   TRANSCODE_QUEUE_NAME,
@@ -64,7 +70,17 @@ export class TranscodingService {
   /**
    * Returns all transcode records for a given file across all versions.
    */
-  async getTranscodeStatus(fileId: string) {
+  async getTranscodeStatus(userId: string, userRole: Role, fileId: string) {
+    const file = await this.prisma.file.findUnique({
+      where: { id: fileId },
+    });
+    if (!file) {
+      throw new NotFoundException('File not found');
+    }
+    if (userRole !== Role.ADMIN && file.ownerId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
     return this.prisma.videoTranscode.findMany({
       where: { fileId },
       orderBy: [{ createdAt: 'desc' }, { quality: 'asc' }],
@@ -74,7 +90,22 @@ export class TranscodingService {
   /**
    * Returns transcode records for a specific file version.
    */
-  async getTranscodeByFileAndVersion(fileId: string, versionId: string) {
+  async getTranscodeByFileAndVersion(
+    userId: string,
+    userRole: Role,
+    fileId: string,
+    versionId: string,
+  ) {
+    const file = await this.prisma.file.findUnique({
+      where: { id: fileId },
+    });
+    if (!file) {
+      throw new NotFoundException('File not found');
+    }
+    if (userRole !== Role.ADMIN && file.ownerId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
     return this.prisma.videoTranscode.findMany({
       where: { fileId, versionId },
       orderBy: { quality: 'asc' },

@@ -65,10 +65,16 @@ export class ApiKeyGuard implements CanActivate {
       });
 
     // Populate user and apiKey metadata on request
+    const effectiveRole = apiKeyRecord.user?.role
+      ? apiKeyRecord.user.role === Role.ADMIN
+        ? apiKeyRecord.role
+        : apiKeyRecord.user.role
+      : apiKeyRecord.role;
+
     request.user = {
       id: apiKeyRecord.userId || apiKeyRecord.id,
       email: apiKeyRecord.user?.email || `${apiKeyRecord.name}@apikey.local`,
-      role: apiKeyRecord.role,
+      role: effectiveRole,
       isApiKey: true,
     };
     request.apiKey = apiKeyRecord;

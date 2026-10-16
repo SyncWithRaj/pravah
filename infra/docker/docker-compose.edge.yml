@@ -4,8 +4,7 @@ services:
     image: redis:7-alpine
     container_name: pravah-edge-redis
     restart: always
-    ports:
-      - "6380:6379"
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
     volumes:
       - edge_redis_data:/data
     networks:
@@ -38,6 +37,20 @@ services:
       - PEER_MAX_ATTEMPTS=3
       - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://jaeger:4318}
       - OTEL_SERVICE_NAME=pravah-${EDGE_NODE_ID:-edge-node-01}
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET}
+      - EDGE_URL_SIGNING_SECRET=${EDGE_URL_SIGNING_SECRET}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - BULLMQ_REDIS_HOST=redis
+      - KAFKA_SASL_USERNAME=${KAFKA_EDGE_SASL_USERNAME:-${KAFKA_SASL_USERNAME:-pravah-edge}}
+      - KAFKA_SASL_PASSWORD=${KAFKA_EDGE_SASL_PASSWORD:-${KAFKA_SASL_PASSWORD}}
+      - KAFKA_SASL_MECHANISM=${KAFKA_SASL_MECHANISM:-scram-sha-256}
+    env_file:
+      - ../../.env
+    depends_on:
+      edge-redis:
+        condition: service_started
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - pravah-net
 
@@ -90,8 +103,20 @@ services:
       - PEER_MAX_ATTEMPTS=3
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
       - OTEL_SERVICE_NAME=pravah-edge-node-02
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET}
+      - EDGE_URL_SIGNING_SECRET=${EDGE_URL_SIGNING_SECRET}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - BULLMQ_REDIS_HOST=redis
+      - KAFKA_SASL_USERNAME=${KAFKA_EDGE_SASL_USERNAME:-${KAFKA_SASL_USERNAME:-pravah-edge}}
+      - KAFKA_SASL_PASSWORD=${KAFKA_EDGE_SASL_PASSWORD:-${KAFKA_SASL_PASSWORD}}
+      - KAFKA_SASL_MECHANISM=${KAFKA_SASL_MECHANISM:-scram-sha-256}
+    env_file:
+      - ../../.env
     depends_on:
-      - edge-redis
+      edge-redis:
+        condition: service_started
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - pravah-net
 
@@ -119,8 +144,20 @@ services:
       - PEER_MAX_ATTEMPTS=3
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
       - OTEL_SERVICE_NAME=pravah-edge-node-03
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET}
+      - EDGE_URL_SIGNING_SECRET=${EDGE_URL_SIGNING_SECRET}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - BULLMQ_REDIS_HOST=redis
+      - KAFKA_SASL_USERNAME=${KAFKA_EDGE_SASL_USERNAME:-${KAFKA_SASL_USERNAME:-pravah-edge}}
+      - KAFKA_SASL_PASSWORD=${KAFKA_EDGE_SASL_PASSWORD:-${KAFKA_SASL_PASSWORD}}
+      - KAFKA_SASL_MECHANISM=${KAFKA_SASL_MECHANISM:-scram-sha-256}
+    env_file:
+      - ../../.env
     depends_on:
-      - edge-redis
+      edge-redis:
+        condition: service_started
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - pravah-net
 

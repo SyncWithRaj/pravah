@@ -25,10 +25,9 @@ export class ApiKeyController {
     @Req() req: Request & { user: { id: string; role: Role } },
     @Body() dto: CreateApiKeyDto,
   ) {
-    if (dto.role && req.user.role !== Role.ADMIN) {
-      dto.role = req.user.role;
-    }
-    return this.apiKeyService.createApiKey(req.user.id, dto);
+    const role =
+      req.user.role === Role.ADMIN ? dto.role || Role.USER : req.user.role;
+    return this.apiKeyService.createApiKey(req.user.id, { ...dto, role });
   }
 
   @Get()

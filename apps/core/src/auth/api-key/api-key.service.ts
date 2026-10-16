@@ -6,12 +6,9 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { Role } from '@prisma/client';
 import * as crypto from 'crypto';
+import { CreateApiKeyDto } from './dto/create-api-key.dto';
 
-export interface CreateApiKeyDto {
-  name: string;
-  role?: Role;
-  expiresInDays?: number;
-}
+export { CreateApiKeyDto };
 
 @Injectable()
 export class ApiKeyService {
@@ -34,7 +31,7 @@ export class ApiKeyService {
         name: dto.name,
         keyHash,
         keyPrefix,
-        role: dto.role || Role.STREAMER,
+        role: dto.role || Role.USER,
         userId: userId || undefined,
         expiresAt,
         isActive: true,

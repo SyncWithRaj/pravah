@@ -1,9 +1,13 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { DlqController } from './dlq.controller';
-import { ReplicationService } from './replication.service';
+import { ReplicationService, SafeFailedJob } from './replication.service';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
-import { ReplicationJobStatus, EdgeNodeStatus } from '@prisma/client';
+import {
+  ReplicationJobStatus,
+  EdgeNodeStatus,
+  FileStatus,
+} from '@prisma/client';
 import { UnifiedAuthGuard, RolesGuard } from '../auth';
 
 describe('DlqController', () => {
@@ -38,53 +42,62 @@ describe('DlqController', () => {
     replicationService = module.get(ReplicationService);
   });
 
+  const createMockDLQEvent = (
+    overrides?: Partial<SafeFailedJob>,
+  ): SafeFailedJob => ({
+    id: 'dlq-1',
+    fileId: 'file-1',
+    edgeNodeId: 'edge-1',
+    status: ReplicationJobStatus.FAILED,
+    attempts: 3,
+    lastError: 'Connection timeout',
+    isDeadLetter: true,
+    deadLetterAt: new Date('2026-08-16T19:00:00Z'),
+    deadLetterReason: 'Connection timeout',
+    replayedAt: null,
+    startedAt: new Date(),
+    completedAt: null,
+    durationMs: 1200,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    file: {
+      id: 'file-1',
+      name: 'test.mp4',
+      mimeType: 'video/mp4',
+      totalSize: BigInt(1000),
+      totalChunks: 1,
+      uploadedChunks: 1,
+      checksum: null,
+      status: FileStatus.PENDING,
+      bucketName: 'pravah-origin',
+      storagePath: null,
+      ownerId: 'user-1',
+      currentVersionId: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    edgeNode: {
+      id: 'edge-1',
+      name: 'Mumbai Edge',
+      region: 'ap-south-1',
+      endpointUrl: 'http://localhost:3001',
+      latitude: 19.076,
+      longitude: 72.8777,
+      status: EdgeNodeStatus.HEALTHY,
+      lastHeartbeat: new Date(),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+    ...overrides,
+  });
+
   it('should be defined', () => {
     expect(controller).toBeDefined();
   });
 
   describe('getAllDLQEvents', () => {
     it('should return formatted list of DLQ events', async () => {
-      const mockEvents = [
-        {
-          id: 'dlq-1',
-          fileId: 'file-1',
-          file: {
-            id: 'file-1',
-            name: 'test.mp4',
-            mimeType: 'video/mp4',
-            totalSize: BigInt(1000),
-            ownerId: 'user-1',
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-          edgeNodeId: 'edge-1',
-          edgeNode: {
-            id: 'edge-1',
-            name: 'Mumbai Edge',
-            region: 'ap-south-1',
-            endpointUrl: 'http://localhost:3001',
-            latitude: 19.076,
-            longitude: 72.8777,
-            status: EdgeNodeStatus.HEALTHY,
-            lastHeartbeat: new Date(),
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-          status: ReplicationJobStatus.FAILED,
-          attempts: 3,
-          lastError: 'Connection timeout',
-          isDeadLetter: true,
-          deadLetterAt: new Date('2026-08-16T19:00:00Z'),
-          deadLetterReason: 'Connection timeout',
-          replayedAt: null,
-          payload: null,
-          startedAt: new Date(),
-          completedAt: null,
-          durationMs: 1200,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-      ];
+      const mockEvents: SafeFailedJob[] = [createMockDLQEvent()];
 
       replicationService.getDLQEvents.mockResolvedValue(mockEvents);
 
@@ -100,18 +113,7 @@ describe('DlqController', () => {
 
   describe('getDLQEventById', () => {
     it('should return a single DLQ event if found', async () => {
-      const mockEvent = {
-        id: 'dlq-1',
-        fileId: 'file-1',
-        attempts: 3,
-        status: ReplicationJobStatus.FAILED,
-        isDeadLetter: true,
-        edgeNodeId: 'edge-1',
-        createdAt: new Date(),
-        updatedAt: new Date(),
-        file: { id: 'file-1', name: 'test.mp4' },
-        edgeNode: { id: 'edge-1', name: 'Mumbai Edge' },
-      };
+      const mockEvent: SafeFailedJob = createMockDLQEvent();
 
       replicationService.getDLQEventById.mockResolvedValue(mockEvent);
 
@@ -144,9 +146,9 @@ describe('DlqController', () => {
     });
 
     it('should replay all matching events for a fileId', async () => {
-      const mockEvents = [
-        { id: 'dlq-1', fileId: 'file-100' },
-        { id: 'dlq-2', fileId: 'file-100' },
+      const mockEvents: SafeFailedJob[] = [
+        createMockDLQEvent({ id: 'dlq-1', fileId: 'file-100' }),
+        createMockDLQEvent({ id: 'dlq-2', fileId: 'file-100' }),
       ];
 
       replicationService.getDLQEvents.mockResolvedValue(mockEvents);

@@ -4,6 +4,7 @@ import { ValidationPipe, Logger } from '@nestjs/common';
 import { MicroserviceOptions, Transport } from '@nestjs/microservices';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { AppModule } from './app.module';
+import { getKafkaSaslConfig } from './common/kafka/kafka.config';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -18,6 +19,13 @@ async function bootstrap() {
   );
 
   app.useWebSocketAdapter(new IoAdapter(app));
+
+  // Topology Decision for trust proxy:
+  // Pravah Core is exposed directly on port 3000 to clients, dashboard, and edge nodes;
+  // it does not sit behind an nginx reverse proxy in this deployment topology (nginx edge-proxy
+  // only fronts the edge nodes on port 8000/3001). Therefore, we intentionally do NOT enable
+  // 'trust proxy', ensuring request.ip resolves securely to the direct socket remote address
+  // and cannot be spoofed via forged X-Forwarded-For headers.
 
   app.enableCors({
     origin: '*',
@@ -39,14 +47,21 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api/v1');
 
+  const saslConfig = getKafkaSaslConfig(
+    process.env.KAFKA_SASL_USERNAME,
+    process.env.KAFKA_SASL_PASSWORD,
+    process.env.KAFKA_SASL_MECHANISM,
+  );
+
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.KAFKA,
     options: {
       client: {
         brokers: [process.env.KAFKA_BROKERS || 'localhost:19092'],
+        ...(saslConfig ? { sasl: saslConfig } : {}),
       },
       consumer: {
-        groupId: 'pravah-core-edge-' + Math.random().toString(36).substring(7),
+        groupId: process.env.KAFKA_GROUP_ID || 'pravah-core-cluster-group',
       },
     },
   });

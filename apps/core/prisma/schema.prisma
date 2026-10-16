@@ -18,6 +18,7 @@ enum Role {
   STREAMER
   VIEWER
   USER
+  INTERNAL
 }
 
 // Tracks where a file upload currently stands in its lifecycle

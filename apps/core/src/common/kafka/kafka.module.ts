@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ClientsModule, Transport } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { KafkaService } from './kafka.service';
+import { getKafkaSaslConfig } from './kafka.config';
 
 @Module({
   imports: [
@@ -9,18 +10,28 @@ import { KafkaService } from './kafka.service';
       {
         name: 'KAFKA_CLIENT',
         imports: [ConfigModule],
-        useFactory: (configService: ConfigService) => ({
-          transport: Transport.KAFKA,
-          options: {
-            client: {
-              clientId: 'pravah-core',
-              brokers: [
-                configService.get<string>('KAFKA_BROKERS') || 'localhost:19092',
-              ],
+        useFactory: (configService: ConfigService) => {
+          const sasl = getKafkaSaslConfig(
+            configService.get<string>('KAFKA_SASL_USERNAME'),
+            configService.get<string>('KAFKA_SASL_PASSWORD'),
+            configService.get<string>('KAFKA_SASL_MECHANISM'),
+          );
+
+          return {
+            transport: Transport.KAFKA,
+            options: {
+              client: {
+                clientId: 'pravah-core',
+                brokers: [
+                  configService.get<string>('KAFKA_BROKERS') ||
+                    'localhost:19092',
+                ],
+                ...(sasl ? { sasl } : {}),
+              },
+              producerOnlyMode: true,
             },
-            producerOnlyMode: true,
-          },
-        }),
+          };
+        },
         inject: [ConfigService],
       },
     ]),

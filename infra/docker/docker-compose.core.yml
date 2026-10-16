@@ -20,8 +20,7 @@ services:
     image: redis:7-alpine
     container_name: pravah-redis
     restart: always
-    ports:
-      - "6379:6379"
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
     networks:
@@ -40,11 +39,76 @@ services:
       - --node-id 0
       - --kafka-addr PLAINTEXT://0.0.0.0:9092,OUTSIDE://0.0.0.0:19092
       - --advertise-kafka-addr PLAINTEXT://redpanda:9092,OUTSIDE://${CORE_PUBLIC_IP:-localhost}:19092
+      - --set redpanda.enable_sasl=true
+      - --set redpanda.superusers=['admin']
     ports:
-      - "19092:19092"
-      - "9644:9644"
+      - "127.0.0.1:9644:9644"
     volumes:
       - redpanda_data:/var/lib/redpanda/data
+    networks:
+      - pravah-net
+
+  # 3b. Kafka / Redpanda Bootstrap & SASL Provisioning
+  kafka-init:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: pravah-kafka-init
+    depends_on:
+      redpanda:
+        condition: service_started
+    environment:
+      - KAFKA_ADMIN_PASSWORD=${KAFKA_ADMIN_PASSWORD}
+      - KAFKA_SASL_USERNAME=${KAFKA_SASL_USERNAME:-pravah-core}
+      - KAFKA_SASL_PASSWORD=${KAFKA_SASL_PASSWORD}
+      - KAFKA_EDGE_SASL_USERNAME=${KAFKA_EDGE_SASL_USERNAME:-pravah-edge}
+      - KAFKA_EDGE_SASL_PASSWORD=${KAFKA_EDGE_SASL_PASSWORD}
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -euo pipefail
+        echo 'waiting for redpanda...';
+        until rpk cluster health -X admin.hosts=redpanda:9644 >/dev/null 2>&1 || (rpk security user list -X admin.hosts=redpanda:9644 >/dev/null 2>&1); do sleep 2; done;
+        echo 'brokers ready';
+        until (rpk security user list -X admin.hosts=redpanda:9644 >/dev/null 2>&1); do sleep 2; done;
+        if (rpk security user list -X admin.hosts=redpanda:9644 2>/dev/null) | grep -qx "$${KAFKA_SASL_USERNAME}"; then
+          echo 'core user exists';
+        else
+          rpk security user create "$${KAFKA_SASL_USERNAME}" --password "$${KAFKA_SASL_PASSWORD}" --mechanism scram-sha-256 -X admin.hosts=redpanda:9644;
+        fi;
+        if (rpk security user list -X admin.hosts=redpanda:9644 2>/dev/null) | grep -qx "$${KAFKA_EDGE_SASL_USERNAME}"; then
+          echo 'edge user exists';
+        else
+          rpk security user create "$${KAFKA_EDGE_SASL_USERNAME}" --password "$${KAFKA_EDGE_SASL_PASSWORD}" --mechanism scram-sha-256 -X admin.hosts=redpanda:9644;
+        fi;
+        if (rpk security user list -X admin.hosts=redpanda:9644 2>/dev/null) | grep -qx 'admin'; then
+          echo 'admin user exists';
+        else
+          rpk security user create admin --password "$${KAFKA_ADMIN_PASSWORD}" --mechanism scram-sha-256 -X admin.hosts=redpanda:9644;
+        fi;
+        echo 'SASL users provisioned';
+
+        rpk security acl create "$${KAFKA_SASL_USERNAME}" --topic 'file.*' --operation read,write 2>/dev/null || true;
+        rpk security acl create "$${KAFKA_SASL_USERNAME}" --topic 'cache.*' --operation read,write 2>/dev/null || true;
+        rpk security acl create "$${KAFKA_SASL_USERNAME}" --topic 'edge.*' --operation read,write 2>/dev/null || true;
+        rpk security acl create "$${KAFKA_SASL_USERNAME}" --topic 'replication.*' --operation read,write 2>/dev/null || true;
+        rpk security acl create "$${KAFKA_SASL_USERNAME}" --topic 'video.*' --operation read,write 2>/dev/null || true;
+        rpk security acl create "$${KAFKA_EDGE_SASL_USERNAME}" --topic 'cache.*' --operation read,write 2>/dev/null || true;
+        rpk security acl create "$${KAFKA_EDGE_SASL_USERNAME}" --topic 'edge.*' --operation read,write 2>/dev/null || true;
+
+        ADMIN_ARGS="--brokers redpanda:9092 --user admin --password $${KAFKA_ADMIN_PASSWORD} --sasl-mechanism scram-sha-256"
+        rpk security acl create --allow-principal "User:$${KAFKA_SASL_USERNAME}" --resource-pattern-type prefixed --topic file. --operation read,write,describe,create $${ADMIN_ARGS} 2>/dev/null || true;
+        rpk security acl create --allow-principal "User:$${KAFKA_SASL_USERNAME}" --resource-pattern-type prefixed --topic cache. --operation read,write,describe,create $${ADMIN_ARGS} 2>/dev/null || true;
+        rpk security acl create --allow-principal "User:$${KAFKA_SASL_USERNAME}" --resource-pattern-type prefixed --topic edge. --operation read,write,describe,create $${ADMIN_ARGS} 2>/dev/null || true;
+        rpk security acl create --allow-principal "User:$${KAFKA_SASL_USERNAME}" --resource-pattern-type prefixed --topic replication. --operation read,write,describe,create $${ADMIN_ARGS} 2>/dev/null || true;
+        rpk security acl create --allow-principal "User:$${KAFKA_SASL_USERNAME}" --resource-pattern-type prefixed --topic video. --operation read,write,describe,create $${ADMIN_ARGS} 2>/dev/null || true;
+        rpk security acl create --allow-principal "User:$${KAFKA_SASL_USERNAME}" --resource-pattern-type prefixed --group pravah- --operation read,describe $${ADMIN_ARGS} 2>/dev/null || true;
+        rpk security acl create --allow-principal "User:$${KAFKA_SASL_USERNAME}" --operation describe --cluster $${ADMIN_ARGS} 2>/dev/null || true;
+
+        rpk security acl create --allow-principal "User:$${KAFKA_EDGE_SASL_USERNAME}" --resource-pattern-type prefixed --topic cache. --operation read,write,describe,create $${ADMIN_ARGS} 2>/dev/null || true;
+        rpk security acl create --allow-principal "User:$${KAFKA_EDGE_SASL_USERNAME}" --resource-pattern-type prefixed --topic edge. --operation read,write,describe,create $${ADMIN_ARGS} 2>/dev/null || true;
+        rpk security acl create --allow-principal "User:$${KAFKA_EDGE_SASL_USERNAME}" --operation describe --cluster $${ADMIN_ARGS} 2>/dev/null || true;
+        echo 'ACLs provisioned successfully';
+    restart: "no"
     networks:
       - pravah-net
 
@@ -85,14 +149,27 @@ services:
       - MINIO_PORT=9000
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
       - OTEL_SERVICE_NAME=pravah-core
+      - INTERNAL_SERVICE_SECRET=${INTERNAL_SERVICE_SECRET}
+      - EDGE_URL_SIGNING_SECRET=${EDGE_URL_SIGNING_SECRET}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - KAFKA_SASL_USERNAME=${KAFKA_SASL_USERNAME:-pravah-core}
+      - KAFKA_SASL_PASSWORD=${KAFKA_SASL_PASSWORD}
+      - KAFKA_SASL_MECHANISM=${KAFKA_SASL_MECHANISM:-scram-sha-256}
     env_file:
       - ../../.env
     depends_on:
-      - postgres
-      - minio
-      - redpanda
-      - redis
-      - jaeger
+      postgres:
+        condition: service_started
+      minio:
+        condition: service_started
+      redpanda:
+        condition: service_started
+      redis:
+        condition: service_started
+      jaeger:
+        condition: service_started
+      kafka-init:
+        condition: service_completed_successfully
     networks:
       - pravah-net
 

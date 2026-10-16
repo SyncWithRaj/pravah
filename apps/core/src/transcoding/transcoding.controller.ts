@@ -1,6 +1,6 @@
 import { Controller, Get, Param, UseGuards } from '@nestjs/common';
 import { TranscodingService } from './transcoding.service';
-import { UnifiedAuthGuard, RolesGuard, Roles } from '../auth';
+import { UnifiedAuthGuard, RolesGuard, Roles, CurrentUser } from '../auth';
 import { Role } from '@prisma/client';
 
 @Controller('admin/transcoding')
@@ -14,8 +14,15 @@ export class TranscodingController {
    * Returns all transcode records for a file across all versions.
    */
   @Get('status/:fileId')
-  async getTranscodeStatus(@Param('fileId') fileId: string) {
-    const records = await this.transcodingService.getTranscodeStatus(fileId);
+  async getTranscodeStatus(
+    @CurrentUser() user: { id: string; role: Role },
+    @Param('fileId') fileId: string,
+  ) {
+    const records = await this.transcodingService.getTranscodeStatus(
+      user.id,
+      user.role,
+      fileId,
+    );
     return {
       fileId,
       totalRecords: records.length,
@@ -29,10 +36,13 @@ export class TranscodingController {
    */
   @Get('status/:fileId/version/:versionId')
   async getTranscodeByVersion(
+    @CurrentUser() user: { id: string; role: Role },
     @Param('fileId') fileId: string,
     @Param('versionId') versionId: string,
   ) {
     const records = await this.transcodingService.getTranscodeByFileAndVersion(
+      user.id,
+      user.role,
       fileId,
       versionId,
     );

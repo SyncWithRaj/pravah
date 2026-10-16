@@ -7,8 +7,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { MetadataService } from './metadata.service';
-import { UnifiedAuthGuard, CurrentUser } from '../auth';
-import { User } from '@prisma/client';
+import { UnifiedAuthGuard, RolesGuard, Roles, CurrentUser } from '../auth';
+import { User, Role } from '@prisma/client';
 import { GetFilesQueryDto } from './dto/get-files-query.dto';
 
 @UseGuards(UnifiedAuthGuard)
@@ -49,6 +49,8 @@ export class MetadataController {
   }
 }
 
+@UseGuards(UnifiedAuthGuard, RolesGuard)
+@Roles(Role.INTERNAL)
 @Controller('internal/metadata')
 export class InternalMetadataController {
   constructor(private readonly metadataService: MetadataService) {}

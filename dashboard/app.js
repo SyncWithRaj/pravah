@@ -8,6 +8,12 @@ const CORE_API_URL = `http://${HOSTNAME}:3000/api/v1`;
 const CORE_BASE_URL = `http://${HOSTNAME}:3000`;
 const EDGE_URL = `http://${HOSTNAME}:3001`;
 
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>'"]/g, 
+    tag => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[tag] || tag)
+  );
+}
+
 // Application Global State
 const STATE = {
   token: localStorage.getItem('pravah_jwt_token') || '',
@@ -85,6 +91,7 @@ function showDashboardView() {
   document.getElementById('view-auth').classList.add('hidden');
   document.getElementById('view-dashboard').classList.remove('hidden');
   updateUserProfileUI();
+  setupSocketIO();
   refreshFilesList();
   refreshTopologyNodes();
 }
@@ -357,23 +364,60 @@ function logApiRequest(log) {
 
   const logRow = document.createElement('div');
   logRow.className = 'p-2.5 rounded-lg bg-dark-950 border border-white/5 space-y-1 hover:border-white/10 transition';
-  logRow.innerHTML = `
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${statusColor} border">${log.status}</span>
-        <span class="font-bold text-slate-300 uppercase">${log.method}</span>
-        <span class="text-slate-400 truncate max-w-md">${log.url}</span>
-      </div>
-      <div class="flex items-center gap-2 text-slate-500 text-[10px]">
-        <span>${log.duration}ms</span>
-        <span>${log.timestamp}</span>
-      </div>
-    </div>
-    <details class="text-[10px] text-slate-400">
-      <summary class="cursor-pointer hover:text-slate-200">Response Payload</summary>
-      <pre class="mt-1 p-2 rounded bg-dark-900 border border-white/5 text-slate-300 overflow-x-auto max-h-32">${typeof log.body === 'object' ? JSON.stringify(log.body, null, 2) : log.body}</pre>
-    </details>
-  `;
+
+  const headerDiv = document.createElement('div');
+  headerDiv.className = 'flex items-center justify-between';
+
+  const leftDiv = document.createElement('div');
+  leftDiv.className = 'flex items-center gap-2';
+
+  const statusSpan = document.createElement('span');
+  statusSpan.className = `px-1.5 py-0.5 rounded text-[10px] font-bold ${statusColor} border`;
+  statusSpan.textContent = String(log.status);
+
+  const methodSpan = document.createElement('span');
+  methodSpan.className = 'font-bold text-slate-300 uppercase';
+  methodSpan.textContent = String(log.method);
+
+  const urlSpan = document.createElement('span');
+  urlSpan.className = 'text-slate-400 truncate max-w-md';
+  urlSpan.textContent = String(log.url);
+
+  leftDiv.appendChild(statusSpan);
+  leftDiv.appendChild(methodSpan);
+  leftDiv.appendChild(urlSpan);
+
+  const rightDiv = document.createElement('div');
+  rightDiv.className = 'flex items-center gap-2 text-slate-500 text-[10px]';
+
+  const durSpan = document.createElement('span');
+  durSpan.textContent = `${log.duration}ms`;
+
+  const timeSpan = document.createElement('span');
+  timeSpan.textContent = String(log.timestamp);
+
+  rightDiv.appendChild(durSpan);
+  rightDiv.appendChild(timeSpan);
+
+  headerDiv.appendChild(leftDiv);
+  headerDiv.appendChild(rightDiv);
+
+  const details = document.createElement('details');
+  details.className = 'text-[10px] text-slate-400';
+
+  const summary = document.createElement('summary');
+  summary.className = 'cursor-pointer hover:text-slate-200';
+  summary.textContent = 'Response Payload';
+
+  const pre = document.createElement('pre');
+  pre.className = 'mt-1 p-2 rounded bg-dark-900 border border-white/5 text-slate-300 overflow-x-auto max-h-32';
+  pre.textContent = typeof log.body === 'object' ? JSON.stringify(log.body, null, 2) : String(log.body ?? '');
+
+  details.appendChild(summary);
+  details.appendChild(pre);
+
+  logRow.appendChild(headerDiv);
+  logRow.appendChild(details);
 
   if (container.children.length === 1 && container.children[0].textContent.includes('No HTTP requests')) {
     container.innerHTML = '';
@@ -719,26 +763,26 @@ function renderFilesTable(files) {
     return `
       <tr class="hover:bg-dark-850/50 transition">
         <td class="p-3">
-          <div class="font-bold text-slate-200 font-sans truncate max-w-[200px]">${f.name}</div>
-          <div class="text-[10px] text-slate-500 font-mono">${f.id}</div>
+          <div class="font-bold text-slate-200 font-sans truncate max-w-[200px]">${escapeHtml(f.name)}</div>
+          <div class="text-[10px] text-slate-500 font-mono">${escapeHtml(f.id)}</div>
         </td>
         <td class="p-3 text-slate-300 font-mono">${formatBytes(f.totalSize)}</td>
         <td class="p-3">
-          <span class="px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full ${statusBg} border">${f.status}</span>
+          <span class="px-2 py-0.5 text-[10px] font-semibold uppercase rounded-full ${statusBg} border">${escapeHtml(f.status)}</span>
         </td>
         <td class="p-3 text-slate-400">${new Date(f.createdAt).toLocaleDateString()}</td>
         <td class="p-3 text-right">
           <div class="flex items-center justify-end gap-1.5 font-sans">
-            <button onclick="playHlsStream('${f.id}')" class="px-2 py-1 rounded bg-brand-600/20 hover:bg-brand-600 text-brand-300 hover:text-white text-[11px] font-semibold transition flex items-center gap-1">
+            <button onclick="playHlsStream(${JSON.stringify(f.id).replace(/"/g, '&quot;')})" class="px-2 py-1 rounded bg-brand-600/20 hover:bg-brand-600 text-brand-300 hover:text-white text-[11px] font-semibold transition flex items-center gap-1">
               <i data-lucide="play" class="w-3 h-3"></i> Stream
             </button>
-            <button onclick="openRangeTester('${f.id}')" class="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-white text-[11px] font-semibold transition flex items-center gap-1">
+            <button onclick="openRangeTester(${JSON.stringify(f.id).replace(/"/g, '&quot;')})" class="px-2 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-white text-[11px] font-semibold transition flex items-center gap-1">
               <i data-lucide="download" class="w-3 h-3"></i> Range 206
             </button>
-            <button onclick="triggerPurgeModal('${f.id}')" class="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-white text-[11px] font-semibold transition flex items-center gap-1" title="Evict from Edge RAM & Invalidate Kafka">
+            <button onclick="triggerPurgeModal(${JSON.stringify(f.id).replace(/"/g, '&quot;')})" class="px-2 py-1 rounded bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-white text-[11px] font-semibold transition flex items-center gap-1" title="Evict from Edge RAM & Invalidate Kafka">
               <i data-lucide="refresh-cw" class="w-3 h-3"></i> Purge
             </button>
-            <button onclick="deleteFileRecord('${f.id}')" class="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white text-[11px] font-semibold transition flex items-center gap-1" title="Permanently delete from MinIO and Database">
+            <button onclick="deleteFileRecord(${JSON.stringify(f.id).replace(/"/g, '&quot;')})" class="px-2 py-1 rounded bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white text-[11px] font-semibold transition flex items-center gap-1" title="Permanently delete from MinIO and Database">
               <i data-lucide="trash-2" class="w-3 h-3"></i> Delete
             </button>
           </div>
@@ -1056,8 +1100,8 @@ async function playHlsStream(fileId) {
   const emptyState = document.getElementById('video-empty-state');
   if (emptyState) emptyState.classList.add('hidden');
 
-  // HLS Master Playlist URL directly from Edge Node
-  const streamUrl = `${EDGE_URL}/edge/content/${fileId}/hls/master.m3u8?v=1`;
+  // HLS Master Playlist URL routed through Core API
+  const streamUrl = `${CORE_API_URL}/edge/content/${fileId}/hls/master.m3u8?v=1`;
 
   if (STATE.hlsPlayer) {
     STATE.hlsPlayer.destroy();
@@ -1333,37 +1377,8 @@ async function executeClusterPurge() {
 }
 
 async function executeEdgeDirectPurge() {
-  const fileId = document.getElementById('purge-file-id').value.trim();
-  if (!fileId) {
-    showToast('Please enter a File ID to purge', 'error');
-    return;
-  }
-
-  const badge = document.getElementById('purge-status-badge');
-  const output = document.getElementById('purge-response-json');
-  badge.textContent = 'Purging Edge RAM...';
-
-  try {
-    // Direct Edge RAM Purge Route: POST http://localhost:3001/edge/content/:fileId/purge
-    const res = await apiRequest(`${EDGE_URL}/edge/content/${fileId}/purge`, {
-      method: 'POST'
-    });
-
-    output.textContent = JSON.stringify(res.data, null, 2);
-    if (res.ok) {
-      badge.textContent = 'Edge RAM Evicted';
-      badge.className = 'px-2 py-0.5 text-[10px] font-mono uppercase font-bold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-      showToast('Edge node RAM cache evicted immediately', 'success');
-    } else {
-      badge.textContent = `HTTP ${res.status}`;
-      badge.className = 'px-2 py-0.5 text-[10px] font-mono uppercase font-bold rounded bg-rose-500/20 text-rose-400';
-      showToast(`Edge purge failed: ${res.data?.message || res.status}`, 'error');
-    }
-  } catch (err) {
-    badge.textContent = 'Edge Error';
-    output.textContent = JSON.stringify({ error: err.message }, null, 2);
-    showToast(`Edge purge error: ${err.message}`, 'error');
-  }
+  // Edge purge is routed securely through authenticated Core API which broadcasts cache invalidation
+  await executeClusterPurge();
 }
 
 // ============================================================================
@@ -1410,16 +1425,27 @@ function renderDLQTable(events) {
 
   tbody.innerHTML = events.map(e => `
     <tr class="hover:bg-dark-850/50 transition">
-      <td class="p-3 text-slate-400 font-mono">${e.id.substring(0, 8)}...</td>
-      <td class="p-3 font-mono text-slate-200">${e.fileId || '--'}</td>
-      <td class="p-3 font-bold text-amber-300">${e.edgeNodeId || '--'}</td>
-      <td class="p-3 text-rose-400 font-bold">${e.attempts}</td>
-      <td class="p-3 text-slate-400 truncate max-w-xs" title="${e.lastError || ''}">${e.lastError || 'Replication Timeout'}</td>
+      <td class="p-3 text-slate-400 font-mono">${escapeHtml(e.id.substring(0, 8))}...</td>
+      <td class="p-3 font-mono text-slate-200">${escapeHtml(e.fileId || '--')}</td>
+      <td class="p-3 font-bold text-amber-300">${escapeHtml(e.edgeNodeId || '--')}</td>
+      <td class="p-3 text-rose-400 font-bold">${escapeHtml(e.attempts)}</td>
+      <td class="p-3 text-slate-400 truncate max-w-xs" title="${escapeHtml(e.lastError || '')}">${escapeHtml(e.lastError || 'Replication Timeout')}</td>
       <td class="p-3 text-right">
-        <button onclick="replayDLQEvent('${e.id}')" class="px-2.5 py-1 rounded bg-brand-600/20 hover:bg-brand-600 text-brand-300 hover:text-white text-[11px] font-semibold transition">Replay</button>
+        <button onclick="replayDLQEvent(${JSON.stringify(e.id).replace(/"/g, '&quot;')})" data-action="replay-dlq" data-event-id="${escapeHtml(e.id)}" class="px-2.5 py-1 rounded bg-brand-600/20 hover:bg-brand-600 text-brand-300 hover:text-white text-[11px] font-semibold transition">Replay</button>
       </td>
     </tr>
   `).join('');
+
+  if (!tbody.dataset.hasDelegatedListener) {
+    tbody.dataset.hasDelegatedListener = 'true';
+    tbody.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('button[data-action="replay-dlq"]');
+      if (btn) {
+        const eventId = btn.getAttribute('data-event-id');
+        if (eventId) replayDLQEvent(eventId);
+      }
+    });
+  }
 
   if (window.lucide) lucide.createIcons();
 }
@@ -1501,16 +1527,27 @@ function renderApiKeysTable(keys) {
 
   tbody.innerHTML = keys.map(k => `
     <tr class="hover:bg-dark-850/50 transition">
-      <td class="p-3 font-bold text-slate-200">${k.name}</td>
-      <td class="p-3 text-brand-300">${k.keyPrefix || 'prv_live_...'}</td>
-      <td class="p-3"><span class="px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">${k.role}</span></td>
+      <td class="p-3 font-bold text-slate-200">${escapeHtml(k.name)}</td>
+      <td class="p-3 text-brand-300">${escapeHtml(k.keyPrefix || 'prv_live_...')}</td>
+      <td class="p-3"><span class="px-2 py-0.5 text-[10px] font-semibold uppercase rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">${escapeHtml(k.role)}</span></td>
       <td class="p-3 text-slate-400">${new Date(k.createdAt).toLocaleDateString()}</td>
       <td class="p-3"><span class="text-emerald-400 font-semibold">Active</span></td>
       <td class="p-3 text-right">
-        <button onclick="revokeApiKey('${k.id}')" class="px-2.5 py-1 rounded bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white text-[11px] font-medium transition">Revoke</button>
+        <button onclick="revokeApiKey(${JSON.stringify(k.id).replace(/"/g, '&quot;')})" data-action="revoke-key" data-key-id="${escapeHtml(k.id)}" class="px-2.5 py-1 rounded bg-rose-500/10 hover:bg-rose-500 text-rose-400 hover:text-white text-[11px] font-medium transition">Revoke</button>
       </td>
     </tr>
   `).join('');
+
+  if (!tbody.dataset.hasDelegatedListener) {
+    tbody.dataset.hasDelegatedListener = 'true';
+    tbody.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('button[data-action="revoke-key"]');
+      if (btn) {
+        const keyId = btn.getAttribute('data-key-id');
+        if (keyId) revokeApiKey(keyId);
+      }
+    });
+  }
 
   if (window.lucide) lucide.createIcons();
 }
@@ -1621,7 +1658,14 @@ function setupSocketIO() {
   if (typeof io === 'undefined') return;
 
   try {
-    const socket = io(CORE_BASE_URL, { transports: ['websocket', 'polling'] });
+    if (!STATE.token) return;
+    if (STATE.socket) {
+      STATE.socket.disconnect();
+    }
+    const socket = io(CORE_BASE_URL, {
+      transports: ['websocket', 'polling'],
+      auth: { token: STATE.token },
+    });
     STATE.socket = socket;
 
     socket.on('connect', () => {
@@ -1706,10 +1750,17 @@ function appendLiveCacheItem(data) {
   const color = isHit ? 'text-emerald-400' : isPeer ? 'text-cyan-400' : 'text-amber-400';
 
   row.className = 'p-2 rounded-lg bg-dark-900 border border-white/5 flex items-center justify-between text-[11px] font-mono animate-fadeIn';
-  row.innerHTML = `
-    <span class="${color} font-semibold">${tag} ${data.fileId?.substring(0, 8)}</span>
-    <span class="text-slate-500 text-[10px]">${data.region || 'Mumbai'} • ${data.downloadLatencyMs || 2}ms • ${formatBytes(data.bytesServed || 0)}</span>
-  `;
+
+  const leftSpan = document.createElement('span');
+  leftSpan.className = `${color} font-semibold`;
+  leftSpan.textContent = `${tag} ${(data.fileId || '').substring(0, 8)}`;
+
+  const rightSpan = document.createElement('span');
+  rightSpan.className = 'text-slate-500 text-[10px]';
+  rightSpan.textContent = `${data.region || 'Mumbai'} • ${Number(data.downloadLatencyMs) || 2}ms • ${formatBytes(Number(data.bytesServed) || 0)}`;
+
+  row.appendChild(leftSpan);
+  row.appendChild(rightSpan);
 
   feed.prepend(row);
   if (feed.children.length > 20) feed.lastChild.remove();

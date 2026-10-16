@@ -16,7 +16,7 @@ import { Role } from '@prisma/client';
 
 @Controller('admin/dlq')
 @UseGuards(UnifiedAuthGuard, RolesGuard)
-@Roles(Role.ADMIN)
+@Roles(Role.ADMIN, Role.INTERNAL)
 export class DlqController {
   private readonly logger = new Logger(DlqController.name);
 

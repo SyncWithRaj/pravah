@@ -3,6 +3,7 @@ import {
   IsNotEmpty,
   IsNumber,
   Min,
+  Max,
   IsOptional,
 } from 'class-validator';
 
@@ -21,6 +22,7 @@ export class InitUploadDto {
 
   @IsNumber()
   @Min(1)
+  @Max(10000)
   totalChunks!: number;
 
   @IsString()

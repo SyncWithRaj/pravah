@@ -127,32 +127,30 @@ export class DownloadService {
 
   // konsa active version serve karna hai wo validate karna
   private async resolveCurrentVersion(userId: string, fileId: string) {
-    let currentVersion =
-      await this.cacheManagerService.getCurrentVersion(fileId);
+    const file = await this.prisma.file.findUnique({
+      where: { id: fileId },
+      include: { currentVersion: true },
+    });
 
-    if (!currentVersion) {
-      const file = await this.prisma.file.findUnique({
-        where: { id: fileId },
-        include: { currentVersion: true },
-      });
-
-      if (!file) {
-        throw new NotFoundException('File not found');
-      }
-
-      if (file.ownerId !== userId) {
-        throw new ForbiddenException('Access denied');
-      }
-
-      if (file.status !== 'COMPLETED' && !file.currentVersionId) {
-        throw new BadRequestException('File upload is not yet complete');
-      }
-
-      currentVersion = file.currentVersionId || 'v1';
-
-      await this.cacheManagerService.setCurrentVersion(fileId, currentVersion);
+    if (!file) {
+      throw new NotFoundException('File not found');
     }
 
+    if (file.ownerId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    if (file.status !== 'COMPLETED' && !file.currentVersionId) {
+      throw new BadRequestException('File upload is not yet complete');
+    }
+
+    const cached = await this.cacheManagerService.getCurrentVersion(fileId);
+    if (cached && cached === file.currentVersionId) {
+      return cached;
+    }
+
+    const currentVersion = file.currentVersionId || 'v1';
+    await this.cacheManagerService.setCurrentVersion(fileId, currentVersion);
     return currentVersion;
   }
 
@@ -289,8 +287,14 @@ export class DownloadService {
       where: { id: versionId },
       include: { file: true },
     });
-    const storagePath = versionRec!.storagePath;
-    const fileName = versionRec!.file.name;
+    if (!versionRec || !versionRec.file) {
+      throw new NotFoundException('Version not found');
+    }
+    if (versionRec.file.ownerId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+    const storagePath = versionRec.storagePath;
+    const fileName = versionRec.file.name;
 
     let resultStream: Readable;
     let contentLength = metadata.size;

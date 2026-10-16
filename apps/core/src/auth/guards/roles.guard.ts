@@ -13,7 +13,8 @@ const ROLE_HIERARCHY: Record<Role, Role[]> = {
   [Role.ADMIN]: [Role.ADMIN, Role.STREAMER, Role.VIEWER, Role.USER],
   [Role.STREAMER]: [Role.STREAMER, Role.VIEWER, Role.USER],
   [Role.VIEWER]: [Role.VIEWER, Role.USER],
-  [Role.USER]: [Role.USER, Role.VIEWER],
+  [Role.USER]: [Role.USER],
+  [Role.INTERNAL]: [Role.INTERNAL, Role.STREAMER, Role.VIEWER, Role.USER],
 };
 
 @Injectable()
@@ -21,6 +22,10 @@ export class RolesGuard implements CanActivate {
   constructor(private reflector: Reflector) {}
 
   canActivate(context: ExecutionContext): boolean {
+    if (typeof context.getType === 'function' && context.getType() !== 'http') {
+      return true;
+    }
+
     const requiredRoles = this.reflector.getAllAndOverride<Role[]>(ROLES_KEY, [
       context.getHandler(),
       context.getClass(),

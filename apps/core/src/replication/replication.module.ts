@@ -12,6 +12,8 @@ import { HealthCheckModule } from '../common/health-check/health-check.module';
 import { CacheManagerModule } from '../common/cache-manager/cache-manager.module';
 import { AuthModule } from '../auth/auth.module';
 
+import { REDIS_PASSWORD } from '../common/redis/redis.constants';
+
 @Module({
   imports: [
     ConfigModule,
@@ -25,12 +27,17 @@ import { AuthModule } from '../auth/auth.module';
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        connection: {
-          host: configService.get<string>('REDIS_HOST') || 'localhost',
-          port: configService.get<number>('REDIS_PORT') || 6379,
-        },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const password =
+          configService.get<string>('REDIS_PASSWORD') || REDIS_PASSWORD();
+        return {
+          connection: {
+            host: configService.get<string>('REDIS_HOST') || 'localhost',
+            port: configService.get<number>('REDIS_PORT') || 6379,
+            ...(password ? { password } : {}),
+          },
+        };
+      },
     }),
 
     BullModule.registerQueue({

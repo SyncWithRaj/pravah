@@ -16,17 +16,27 @@ import { InterServiceGuard } from './guards/inter-service.guard';
 import { UnifiedAuthGuard } from './guards/unified-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
+import { RateLimitGuard } from '../common/guards/rate-limit.guard';
+
 @Module({
   imports: [
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
-        secret:
-          configService.get<string>('JWT_SECRET') ||
-          'super-secret-default-key-change-me',
-        signOptions: { expiresIn: '7d' },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const secret = configService.get<string>('JWT_SECRET');
+        if (!secret) {
+          throw new Error('JWT_SECRET is required');
+        }
+        const expiresIn = (configService.get<string>('JWT_EXPIRES_IN') ||
+          '15m') as `${number}m` | `${number}d` | `${number}s` | `${number}h`;
+        return {
+          secret,
+          signOptions: {
+            expiresIn,
+          },
+        };
+      },
       inject: [ConfigService],
     }),
   ],
@@ -40,6 +50,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     ApiKeyGuard,
     InterServiceGuard,
     UnifiedAuthGuard,
+    RateLimitGuard,
   ],
   exports: [
     JwtStrategy,
@@ -50,6 +61,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
     ApiKeyGuard,
     InterServiceGuard,
     UnifiedAuthGuard,
+    RateLimitGuard,
   ],
 })
 export class AuthModule {}

@@ -1,7 +1,22 @@
-import { Controller, Post, Get, Body, Logger, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Logger,
+  UseGuards,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
 import { HealthCheckService } from './health-check.service';
-import { UnifiedAuthGuard, RolesGuard, Roles } from '../../auth';
+import {
+  UnifiedAuthGuard,
+  RolesGuard,
+  Roles,
+  InterServiceGuard,
+} from '../../auth';
 import { Role } from '@prisma/client';
+import { Throttle } from '../decorators/throttle.decorator';
 
 @Controller('admin/health')
 export class HealthCheckController {
@@ -10,7 +25,16 @@ export class HealthCheckController {
   constructor(private readonly healthCheckService: HealthCheckService) {}
 
   @Post('heartbeat')
+  @UseGuards(InterServiceGuard, RolesGuard)
+  @Roles(Role.INTERNAL)
+  @Throttle(120, 60)
   async receiveHeartbeat(@Body() body: { edgeId: string }) {
+    if (!body?.edgeId) {
+      throw new BadRequestException('edgeId is required');
+    }
+    if (!this.healthCheckService.isRegistered(body.edgeId)) {
+      throw new NotFoundException('Unknown edge node');
+    }
     await this.healthCheckService.sendHeartbeat(body.edgeId);
     return { status: 'ok' };
   }

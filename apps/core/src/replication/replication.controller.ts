@@ -1,8 +1,20 @@
-import { Controller, Post, Get, Body, Logger, Param } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Logger,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { ReplicationService } from './replication.service';
+import { UnifiedAuthGuard, RolesGuard, Roles } from '../auth';
+import { Role } from '@prisma/client';
 
 @Controller('admin/replication')
+@UseGuards(UnifiedAuthGuard, RolesGuard)
+@Roles(Role.ADMIN, Role.INTERNAL)
 export class ReplicationController {
   private readonly logger = new Logger(ReplicationController.name);
 

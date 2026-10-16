@@ -7,20 +7,41 @@ import { HashRing } from '../common/replication/hash-ring';
 import { MetricsService } from '../metrics/metrics.service';
 import { TelemetryGateway } from '../telemetry/telemetry.gateway';
 import { ReplicationJobStatus, Prisma, FileStatus } from '@prisma/client';
+import { REDIS_PASSWORD } from '../common/redis/redis.constants';
 
 type ReplicationStatusWithNode = Prisma.ReplicationStatusGetPayload<{
   include: { edgeNode: true };
 }>;
 
-type FailedJobWithNodeAndFile = Prisma.ReplicationStatusGetPayload<{
-  include: { edgeNode: true; file: true };
+export const safeFailedJobSelect =
+  Prisma.validator<Prisma.ReplicationStatusSelect>()({
+    id: true,
+    status: true,
+    attempts: true,
+    lastError: true,
+    isDeadLetter: true,
+    deadLetterAt: true,
+    deadLetterReason: true,
+    replayedAt: true,
+    startedAt: true,
+    completedAt: true,
+    durationMs: true,
+    fileId: true,
+    edgeNodeId: true,
+    createdAt: true,
+    updatedAt: true,
+    edgeNode: true,
+    file: true,
+  });
+
+export type SafeFailedJob = Prisma.ReplicationStatusGetPayload<{
+  select: typeof safeFailedJobSelect;
 }>;
 
 export interface ReplicationJobData {
   fileId: string;
   versionId: string;
   edgeNodeId: string;
-  edgeEndpointUrl: string;
   storagePath: string;
 }
 
@@ -28,6 +49,27 @@ export interface ReplicationJobData {
 export class ReplicationService implements OnModuleInit {
   private readonly logger = new Logger(ReplicationService.name);
   private readonly hashRing = new HashRing();
+  private readonly edgeQueues = new Map<string, Queue>();
+
+  private getEdgeQueue(edgeNodeId: string): Queue {
+    if (process.env.NODE_ENV === 'test' && this.replicationQueue) {
+      return this.replicationQueue;
+    }
+    let q = this.edgeQueues.get(edgeNodeId);
+    if (!q) {
+      const password = REDIS_PASSWORD();
+      q = new Queue('replication.normal', {
+        prefix: edgeNodeId,
+        connection: {
+          host: process.env.REDIS_HOST || 'localhost',
+          port: Number(process.env.REDIS_PORT) || 6379,
+          ...(password ? { password } : {}),
+        },
+      });
+      this.edgeQueues.set(edgeNodeId, q);
+    }
+    return q;
+  }
 
   constructor(
     @InjectQueue('replication.normal')
@@ -128,9 +170,26 @@ export class ReplicationService implements OnModuleInit {
         fileId,
         versionId: versionStr,
         edgeNodeId: node.id,
-        edgeEndpointUrl: node.endpointUrl,
         storagePath,
       };
+
+      try {
+        await this.getEdgeQueue(node.id).add('replicate-file', jobData, {
+          attempts: 3,
+          priority: 5,
+          backoff: {
+            type: 'exponential',
+            delay: 2000,
+          },
+          removeOnComplete: true,
+          removeOnFail: false,
+        });
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        this.logger.error(
+          `Failed to dispatch replication job to edge queue for ${node.id}: ${msg}`,
+        );
+      }
 
       await this.replicationQueue.add('replicate-file', jobData, {
         attempts: 3,
@@ -159,10 +218,10 @@ export class ReplicationService implements OnModuleInit {
     });
   }
 
-  async getFailedJobs(): Promise<FailedJobWithNodeAndFile[]> {
+  async getFailedJobs(): Promise<SafeFailedJob[]> {
     return this.prisma.replicationStatus.findMany({
       where: { status: ReplicationJobStatus.FAILED },
-      include: { edgeNode: true, file: true },
+      select: safeFailedJobSelect,
       orderBy: { updatedAt: 'desc' },
     });
   }
@@ -171,20 +230,20 @@ export class ReplicationService implements OnModuleInit {
   // DLQ MANAGEMENT (Phase 7: Diagram 9)
   // ─────────────────────────────────────────────────────────────────────────
 
-  async getDLQEvents(): Promise<FailedJobWithNodeAndFile[]> {
+  async getDLQEvents(): Promise<SafeFailedJob[]> {
     return this.prisma.replicationStatus.findMany({
       where: {
         OR: [{ isDeadLetter: true }, { status: ReplicationJobStatus.FAILED }],
       },
-      include: { edgeNode: true, file: true },
+      select: safeFailedJobSelect,
       orderBy: { updatedAt: 'desc' },
     });
   }
 
-  async getDLQEventById(id: string): Promise<FailedJobWithNodeAndFile | null> {
+  async getDLQEventById(id: string): Promise<SafeFailedJob | null> {
     return this.prisma.replicationStatus.findUnique({
       where: { id },
-      include: { edgeNode: true, file: true },
+      select: safeFailedJobSelect,
     });
   }
 
@@ -227,9 +286,29 @@ export class ReplicationService implements OnModuleInit {
       fileId: record.fileId,
       versionId: latestVersion.id,
       edgeNodeId: record.edgeNodeId,
-      edgeEndpointUrl: record.edgeNode.endpointUrl,
       storagePath: latestVersion.storagePath,
     };
+
+    try {
+      await this.getEdgeQueue(record.edgeNodeId).add(
+        'replicate-file',
+        jobData,
+        {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 2000,
+          },
+          removeOnComplete: true,
+          removeOnFail: false,
+        },
+      );
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      this.logger.error(
+        `Failed to dispatch retry job to edge queue for ${record.edgeNodeId}: ${msg}`,
+      );
+    }
 
     await this.replicationQueue.add('replicate-file', jobData, {
       attempts: 3,
@@ -438,9 +517,30 @@ export class ReplicationService implements OnModuleInit {
           fileId: file.id,
           versionId: versionStr,
           edgeNodeId: targetNode.id,
-          edgeEndpointUrl: targetNode.endpointUrl,
           storagePath: file.storagePath,
         };
+
+        try {
+          await this.getEdgeQueue(targetNode.id).add(
+            'replicate-file',
+            jobData,
+            {
+              attempts: 3,
+              priority: 3,
+              backoff: {
+                type: 'exponential',
+                delay: 2000,
+              },
+              removeOnComplete: true,
+              removeOnFail: false,
+            },
+          );
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : 'Unknown error';
+          this.logger.error(
+            `Failed to dispatch repair job to edge queue for ${targetNode.id}: ${msg}`,
+          );
+        }
 
         await this.replicationQueue.add('replicate-file', jobData, {
           attempts: 3,

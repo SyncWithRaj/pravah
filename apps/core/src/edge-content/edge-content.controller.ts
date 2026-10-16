@@ -8,13 +8,18 @@ import {
   Logger,
   NotFoundException,
   InternalServerErrorException,
+  UnauthorizedException,
   ParseIntPipe,
 } from '@nestjs/common';
 import { Response, Request } from 'express';
 import { Readable } from 'stream';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { CacheManagerService } from '../common/cache-manager/cache-manager.service';
 import { MinioService } from '../common/minio/minio.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { verifyEdgeUrl } from '../common/security/edge-url.util';
+import { verifyServiceSignature } from '../common/security/service-hmac.util';
 import * as crypto from 'crypto';
 
 @Controller('edge/content')
@@ -25,7 +30,81 @@ export class EdgeContentController {
     private readonly cacheManagerService: CacheManagerService,
     private readonly minioService: MinioService,
     private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
+    private readonly jwtService: JwtService,
   ) {}
+
+  private async authenticateRequest(
+    req: Request,
+    fileId: string,
+    versionStr: string,
+  ): Promise<boolean> {
+    // 1. Edge signed URL verification (?exp=...&sig=...)
+    const expQuery = req.query.exp as string | undefined;
+    const sigQuery = req.query.sig as string | undefined;
+    const signingSecret =
+      this.configService.get<string>('EDGE_URL_SIGNING_SECRET') ||
+      process.env.EDGE_URL_SIGNING_SECRET;
+
+    if (
+      signingSecret &&
+      expQuery &&
+      sigQuery &&
+      verifyEdgeUrl(fileId, versionStr, expQuery, sigQuery, signingSecret)
+    ) {
+      return true;
+    }
+
+    // 2. Inter-service HMAC headers (x-service-*)
+    const serviceSecret =
+      this.configService.get<string>('INTERNAL_SERVICE_SECRET') ||
+      process.env.INTERNAL_SERVICE_SECRET;
+    const serviceId = req.headers['x-service-id'] as string;
+    const serviceTimestamp = req.headers['x-service-timestamp'] as string;
+    const serviceSig = req.headers['x-service-signature'] as string;
+
+    if (serviceSecret && serviceId && serviceTimestamp && serviceSig) {
+      const ts = parseInt(serviceTimestamp, 10);
+      if (
+        !isNaN(ts) &&
+        verifyServiceSignature(
+          serviceId,
+          req.method.toUpperCase(),
+          req.originalUrl || req.url,
+          ts,
+          serviceSig,
+          serviceSecret,
+          req.body,
+        )
+      ) {
+        return true;
+      }
+    }
+
+    // 3. User JWT authentication (header or query param)
+    const rawToken =
+      (typeof req.headers.authorization === 'string'
+        ? req.headers.authorization.replace(/^Bearer\s+/i, '')
+        : null) ||
+      (typeof req.query.token === 'string' ? req.query.token : null);
+
+    if (rawToken) {
+      const jwtSecret = this.configService.get<string>('JWT_SECRET');
+      try {
+        const payload = await this.jwtService.verifyAsync<{
+          sub: string;
+          role?: string;
+        }>(rawToken, { secret: jwtSecret });
+        if (payload?.sub) {
+          return true;
+        }
+      } catch {
+        // Token invalid
+      }
+    }
+
+    return false;
+  }
 
   @Get(':fileId/hls/*')
   async getHlsContent(
@@ -36,8 +115,22 @@ export class EdgeContentController {
   ) {
     const versionNum = versionQuery ? parseInt(versionQuery, 10) : 1;
     const versionStr = versionNum.toString();
+
+    const isAuthed = await this.authenticateRequest(req, fileId, versionStr);
+    if (!isAuthed) {
+      throw new UnauthorizedException('Authentication required');
+    }
+
     const urlParts = req.url.split('/hls/');
     const rawSubpath = urlParts[1]?.split('?')[0] || 'master.m3u8';
+
+    if (
+      rawSubpath.includes('..') ||
+      rawSubpath.startsWith('/') ||
+      rawSubpath.startsWith('\\')
+    ) {
+      return res.status(400).json({ error: 'Invalid HLS path' });
+    }
 
     const isSegment = rawSubpath.endsWith('.ts');
     const isPlaylist = rawSubpath.endsWith('.m3u8');
@@ -124,6 +217,7 @@ export class EdgeContentController {
   async getEdgeContent(
     @Param('fileId') fileId: string,
     @Query('v', ParseIntPipe) version: number,
+    @Req() req: Request,
     @Res() res: Response,
   ) {
     if (!version) {
@@ -131,6 +225,11 @@ export class EdgeContentController {
     }
 
     const versionStr = version.toString();
+
+    const isAuthed = await this.authenticateRequest(req, fileId, versionStr);
+    if (!isAuthed) {
+      throw new UnauthorizedException('Authentication required');
+    }
 
     const buffer = await this.cacheManagerService.getBinary(
       fileId,

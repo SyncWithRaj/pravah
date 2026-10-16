@@ -14,6 +14,8 @@ import { UnifiedAuthGuard, CurrentUser } from '../auth';
 import { User } from '@prisma/client';
 import { RoutingService } from '../common/routing/routing.service';
 import { trace } from '@opentelemetry/api';
+import { ConfigService } from '@nestjs/config';
+import { signEdgeUrl } from '../common/security/edge-url.util';
 
 @UseGuards(UnifiedAuthGuard)
 @Controller('download')
@@ -21,6 +23,7 @@ export class DownloadController {
   constructor(
     private readonly downloadService: DownloadService,
     private readonly routingService: RoutingService,
+    private readonly configService: ConfigService,
   ) {}
 
   private applyHeaders(res: Response, result: DownloadResult, isRange = false) {
@@ -83,7 +86,12 @@ export class DownloadController {
         user.id,
         fileId,
       );
-      const redirectUrl = `${edge.endpointUrl}/edge/content/${fileId}?v=${currentVersion}`;
+      const secret =
+        this.configService.get<string>('EDGE_URL_SIGNING_SECRET') ||
+        process.env.EDGE_URL_SIGNING_SECRET ||
+        '';
+      const signed = signEdgeUrl(fileId, currentVersion, 120, secret);
+      const redirectUrl = `${edge.endpointUrl}/edge/content/${fileId}?v=${currentVersion}&${signed.query}`;
 
       res.setHeader('X-CDN-Edge', edge.name);
       res.setHeader('X-CDN-Region', edge.region);
@@ -145,7 +153,12 @@ export class DownloadController {
 
     if (routingDecision) {
       const { edge, distanceKm, strategy } = routingDecision;
-      const redirectUrl = `${edge.endpointUrl}/api/v1/edge/content/${fileId}?v=${versionNumber}`;
+      const secret =
+        this.configService.get<string>('EDGE_URL_SIGNING_SECRET') ||
+        process.env.EDGE_URL_SIGNING_SECRET ||
+        '';
+      const signed = signEdgeUrl(fileId, versionNumber, 120, secret);
+      const redirectUrl = `${edge.endpointUrl}/edge/content/${fileId}?v=${versionNumber}&${signed.query}`;
 
       res.setHeader('X-CDN-Edge', edge.name);
       res.setHeader('X-CDN-Region', edge.region);

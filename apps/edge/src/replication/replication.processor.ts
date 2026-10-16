@@ -9,6 +9,8 @@ import {
   CacheMetadata,
 } from '../cache/cache.service';
 import { KafkaService } from '../kafka/kafka.service';
+import * as crypto from 'crypto';
+import { signServiceRequest } from '../common/security/service-hmac.util';
 
 interface ReplicationJobData {
   fileId: string;
@@ -54,16 +56,25 @@ export class ReplicationProcessor extends WorkerHost {
       let metadataResponse;
       const coreApiUrl = process.env.CORE_API_URL || 'http://localhost:3000';
       try {
+        const timestamp = Date.now();
+        const metaPath = `/api/v1/internal/metadata/files/${fileId}`;
+        const serviceSecret = process.env.INTERNAL_SERVICE_SECRET || '';
+        const headers = signServiceRequest(
+          actualNodeId,
+          'GET',
+          metaPath,
+          serviceSecret,
+        );
+
         const response = await firstValueFrom(
           this.httpService.get(
-            `${coreApiUrl}/api/v1/internal/metadata/files/${fileId}`,
-          )
+            `${coreApiUrl}${metaPath}`,
+            { headers },
+          ),
         );
         metadataResponse = response.data;
-      } catch (error) {
+      } catch (error: any) {
         this.logger.error(`Failed to fetch metadata for replication: ${error.message}`);
-        
-        
       }
 
       

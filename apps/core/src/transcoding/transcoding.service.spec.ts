@@ -3,12 +3,15 @@ import { TranscodingService } from './transcoding.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { getQueueToken } from '@nestjs/bullmq';
 import { TRANSCODE_QUEUE_NAME } from './transcoding.constants';
-import { TranscodeQuality, TranscodeStatus } from '@prisma/client';
+import { Role, TranscodeQuality, TranscodeStatus } from '@prisma/client';
 
 describe('TranscodingService', () => {
   let service: TranscodingService;
   let mockQueue: { add: jest.Mock };
-  let mockPrisma: { videoTranscode: { findMany: jest.Mock } };
+  let mockPrisma: {
+    file: { findUnique: jest.Mock };
+    videoTranscode: { findMany: jest.Mock };
+  };
 
   beforeEach(async () => {
     mockQueue = {
@@ -16,6 +19,9 @@ describe('TranscodingService', () => {
     };
 
     mockPrisma = {
+      file: {
+        findUnique: jest.fn(),
+      },
       videoTranscode: {
         findMany: jest.fn(),
       },
@@ -96,9 +102,17 @@ describe('TranscodingService', () => {
           status: TranscodeStatus.COMPLETED,
         },
       ];
+      mockPrisma.file.findUnique.mockResolvedValue({
+        id: 'file-1',
+        ownerId: 'user-1',
+      });
       mockPrisma.videoTranscode.findMany.mockResolvedValue(records);
 
-      const result = await service.getTranscodeStatus('file-1');
+      const result = await service.getTranscodeStatus(
+        'user-1',
+        Role.USER,
+        'file-1',
+      );
       expect(result).toEqual(records);
       expect(mockPrisma.videoTranscode.findMany).toHaveBeenCalledWith({
         where: { fileId: 'file-1' },

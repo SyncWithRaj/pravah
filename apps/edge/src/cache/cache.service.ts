@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
 import { KafkaService } from '../kafka/kafka.service';
+import { REDIS_PASSWORD } from '../common/redis/redis.constants';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -49,11 +50,14 @@ export class EdgeCacheService implements OnModuleInit, OnModuleDestroy {
       this.configService.get<string>('REDIS_HOST') || 'localhost';
     const redisPort = this.configService.get<number>('REDIS_PORT') || 6379;
     const redisDb = this.configService.get<number>('REDIS_DB') || 0;
+    const redisPassword =
+      this.configService.get<string>('REDIS_PASSWORD') || REDIS_PASSWORD();
 
     this.redis = new Redis({
       host: redisHost,
       port: redisPort,
       db: redisDb,
+      ...(redisPassword ? { password: redisPassword } : {}),
     });
 
     this.redis.on('connect', () => {
@@ -368,15 +372,23 @@ export class EdgeCacheService implements OnModuleInit, OnModuleDestroy {
     version: string,
     subpath: string,
   ): Promise<Buffer | null> {
+    if (!/^[a-zA-Z0-9_\-]+$/.test(fileId) || !/^[a-zA-Z0-9_\-]+$/.test(version)) {
+      throw new Error('Invalid fileId or version identifier');
+    }
+
     const isTsSegment = subpath.endsWith('.ts');
     if (isTsSegment) {
-      const diskPath = path.join(
+      const baseDir = path.resolve(
         this.diskCachePath,
         fileId,
         `v${version}`,
         'hls',
-        subpath,
       );
+      const diskPath = path.resolve(baseDir, subpath);
+      if (!diskPath.startsWith(baseDir + path.sep)) {
+        throw new Error('Path traversal detected in HLS subpath');
+      }
+
       try {
         return await fs.promises.readFile(diskPath);
       } catch {
@@ -393,23 +405,25 @@ export class EdgeCacheService implements OnModuleInit, OnModuleDestroy {
     buffer: Buffer,
     ttlSeconds: number = 86400,
   ): Promise<void> {
+    if (!/^[a-zA-Z0-9_\-]+$/.test(fileId) || !/^[a-zA-Z0-9_\-]+$/.test(version)) {
+      throw new Error('Invalid fileId or version identifier');
+    }
+
     const isTsSegment = subpath.endsWith('.ts');
     if (isTsSegment) {
-      const diskDir = path.join(
+      const baseDir = path.resolve(
         this.diskCachePath,
         fileId,
         `v${version}`,
         'hls',
-        path.dirname(subpath),
       );
+      const diskFile = path.resolve(baseDir, subpath);
+      if (!diskFile.startsWith(baseDir + path.sep)) {
+        throw new Error('Path traversal detected in HLS subpath');
+      }
+
+      const diskDir = path.dirname(diskFile);
       await fs.promises.mkdir(diskDir, { recursive: true });
-      const diskFile = path.join(
-        this.diskCachePath,
-        fileId,
-        `v${version}`,
-        'hls',
-        subpath,
-      );
       await fs.promises.writeFile(diskFile, buffer);
     }
 

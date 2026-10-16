@@ -18,6 +18,10 @@ export class UnifiedAuthGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    if (typeof context.getType === 'function' && context.getType() !== 'http') {
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest<Request>();
 
     // 1. Check Inter-Service signature first if present

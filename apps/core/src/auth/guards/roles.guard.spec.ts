@@ -83,4 +83,35 @@ describe('RolesGuard', () => {
     const context = createMockContext({ id: 'u3', role: Role.VIEWER });
     expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
   });
+
+  it('should allow INTERNAL to access INTERNAL routes', () => {
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([Role.INTERNAL]);
+    const context = createMockContext({ id: 'edge-1', role: Role.INTERNAL });
+    expect(guard.canActivate(context)).toBe(true);
+  });
+
+  it('should DENY INTERNAL from accessing ADMIN routes', () => {
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([Role.ADMIN]);
+    const context = createMockContext({ id: 'edge-1', role: Role.INTERNAL });
+    expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+  });
+
+  it('should DENY ADMIN from accessing strictly INTERNAL routes', () => {
+    jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue([Role.INTERNAL]);
+    const context = createMockContext({ id: 'u1', role: Role.ADMIN });
+    expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+  });
+
+  it('should allow both ADMIN and INTERNAL when route allows both', () => {
+    jest
+      .spyOn(reflector, 'getAllAndOverride')
+      .mockReturnValue([Role.ADMIN, Role.INTERNAL]);
+    const adminCtx = createMockContext({ id: 'u1', role: Role.ADMIN });
+    const internalCtx = createMockContext({
+      id: 'edge-1',
+      role: Role.INTERNAL,
+    });
+    expect(guard.canActivate(adminCtx)).toBe(true);
+    expect(guard.canActivate(internalCtx)).toBe(true);
+  });
 });

@@ -3,9 +3,10 @@ import { PlacementController } from './placement.controller';
 import { PlacementService } from './placement.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { HealthCheckModule } from '../common/health-check/health-check.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [PrismaModule, HealthCheckModule],
+  imports: [PrismaModule, HealthCheckModule, AuthModule],
   controllers: [PlacementController],
   providers: [PlacementService],
 })
