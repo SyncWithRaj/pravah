@@ -19,6 +19,9 @@ import { MetricsModule } from './metrics/metrics.module';
 import { TelemetryModule } from './telemetry/telemetry.module';
 import { TranscodingModule } from './transcoding/transcoding.module';
 
+import { APP_GUARD } from '@nestjs/core';
+import { RateLimitGuard } from './common/guards/rate-limit.guard';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -46,6 +49,12 @@ import { TranscodingModule } from './transcoding/transcoding.module';
     TranscodingModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: RateLimitGuard,
+    },
+  ],
 })
 export class AppModule {}
