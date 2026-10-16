@@ -75,12 +75,16 @@ describe('InterServiceGuard', () => {
     );
   });
 
-  it('should successfully authenticate valid HMAC signature and attach ADMIN user', () => {
+  it('should successfully authenticate valid HMAC signature and attach INTERNAL user', () => {
     const timestamp = Date.now();
     const serviceId = 'edge-mumbai-01';
     const method = 'POST';
     const path = '/api/v1/admin/health/heartbeat';
-    const payload = `${serviceId}:${method}:${path}:${timestamp}`;
+    const bodyHash = crypto
+      .createHash('sha256')
+      .update(JSON.stringify({}))
+      .digest('hex');
+    const payload = `${serviceId}:${method}:${path}:${timestamp}:${bodyHash}`;
     const validSignature = crypto
       .createHmac('sha256', secret)
       .update(payload)
@@ -101,7 +105,44 @@ describe('InterServiceGuard', () => {
     const req = context.switchToHttp().getRequest();
     expect(req.user).toBeDefined();
     expect(req.user.id).toBe(serviceId);
-    expect(req.user.role).toBe(Role.ADMIN);
+    expect(req.user.role).toBe(Role.INTERNAL);
     expect(req.user.isInterService).toBe(true);
+  });
+
+  it('should reject when request body is tampered', () => {
+    const timestamp = Date.now();
+    const serviceId = 'edge-mumbai-01';
+    const method = 'POST';
+    const path = '/api/v1/admin/health/heartbeat';
+    const originalBodyHash = crypto
+      .createHash('sha256')
+      .update(JSON.stringify({ edgeId: 'edge-mumbai-01' }))
+      .digest('hex');
+    const payload = `${serviceId}:${method}:${path}:${timestamp}:${originalBodyHash}`;
+    const validSignature = crypto
+      .createHmac('sha256', secret)
+      .update(payload)
+      .digest('hex');
+
+    const req = {
+      headers: {
+        'x-service-id': serviceId,
+        'x-service-timestamp': timestamp.toString(),
+        'x-service-signature': validSignature,
+      },
+      method,
+      url: path,
+      body: { edgeId: 'edge-attacker-02' }, // Tampered body
+      user: undefined,
+    };
+    const context = {
+      switchToHttp: () => ({
+        getRequest: () => req,
+      }),
+    } as unknown as ExecutionContext;
+
+    expect(() => guard.canActivate(context)).toThrow(
+      new UnauthorizedException('Invalid inter-service HMAC signature'),
+    );
   });
 });

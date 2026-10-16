@@ -8,16 +8,19 @@ import { ConfigService } from '@nestjs/config';
 import { Role } from '@prisma/client';
 import * as crypto from 'crypto';
 import { Request } from 'express';
+import { verifyServiceSignature } from '../../common/security/service-hmac.util';
 
 @Injectable()
 export class InterServiceGuard implements CanActivate {
-  private readonly defaultSecret =
-    'pravah-internal-microservice-super-secret-2026';
   private readonly maxClockDriftMs = 5 * 60 * 1000; // 5 minutes
 
   constructor(private readonly configService: ConfigService) {}
 
   canActivate(context: ExecutionContext): boolean {
+    if (typeof context.getType === 'function' && context.getType() !== 'http') {
+      return true;
+    }
+
     const request = context.switchToHttp().getRequest<
       Request & {
         user?: {
@@ -62,39 +65,33 @@ export class InterServiceGuard implements CanActivate {
       );
     }
 
-    const secret =
-      this.configService.get<string>('INTERNAL_SERVICE_SECRET') ||
-      this.defaultSecret;
+    const secret = this.configService.get<string>('INTERNAL_SERVICE_SECRET');
+    if (!secret) {
+      throw new UnauthorizedException('INTERNAL_SERVICE_SECRET is not configured');
+    }
 
-    // Canonical payload: method:path:timestamp
     const method = request.method.toUpperCase();
     const url = request.url;
-    const payload = `${serviceId}:${method}:${url}:${timestamp}`;
+    const isValid = verifyServiceSignature(
+      serviceId,
+      method,
+      url,
+      timestamp,
+      signature,
+      secret,
+      request.body,
+      this.maxClockDriftMs,
+    );
 
-    const expectedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(payload)
-      .digest('hex');
-
-    try {
-      const sigBuffer = Buffer.from(signature, 'hex');
-      const expectedBuffer = Buffer.from(expectedSignature, 'hex');
-
-      if (
-        sigBuffer.length !== expectedBuffer.length ||
-        !crypto.timingSafeEqual(sigBuffer, expectedBuffer)
-      ) {
-        throw new UnauthorizedException('Invalid inter-service HMAC signature');
-      }
-    } catch {
+    if (!isValid) {
       throw new UnauthorizedException('Invalid inter-service HMAC signature');
     }
 
-    // Attach system-level admin user context to request
+    // Attach system-level internal user context to request
     request.user = {
       id: serviceId,
       email: `${serviceId}@internal.pravah`,
-      role: Role.ADMIN,
+      role: Role.INTERNAL,
       isInterService: true,
     };
 

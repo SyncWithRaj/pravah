@@ -3,6 +3,7 @@ import { Cron, CronExpression } from '@nestjs/schedule';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'crypto';
+import { signServiceRequest } from '../common/security/service-hmac.util';
 
 @Injectable()
 export class HeartbeatService {
@@ -17,10 +18,7 @@ export class HeartbeatService {
   ) {
     this.edgeNodeId = this.configService.get<string>('EDGE_NODE_ID', 'edge-node-01');
     this.coreApiUrl = this.configService.get<string>('CORE_API_URL', 'http://localhost:3000');
-    this.serviceSecret = this.configService.get<string>(
-      'INTERNAL_SERVICE_SECRET',
-      'pravah-internal-microservice-super-secret-2026',
-    );
+    this.serviceSecret = this.configService.get<string>('INTERNAL_SERVICE_SECRET') || '';
   }
 
   @Cron('*/10 * * * * *')
@@ -28,22 +26,20 @@ export class HeartbeatService {
     try {
       const coreBase = this.coreApiUrl.replace(/\/+$/, '').replace(/\/api\/v1\/?$/, '');
       const path = '/api/v1/admin/health/heartbeat';
-      const timestamp = Date.now();
-      const payload = `${this.edgeNodeId}:POST:${path}:${timestamp}`;
-      const signature = crypto
-        .createHmac('sha256', this.serviceSecret)
-        .update(payload)
-        .digest('hex');
+      const body = { edgeId: this.edgeNodeId };
+      const headers = signServiceRequest(
+        this.edgeNodeId,
+        'POST',
+        path,
+        this.serviceSecret,
+        body,
+      );
 
       await this.httpService.axiosRef.post(
         `${coreBase}${path}`,
-        { edgeId: this.edgeNodeId },
+        body,
         {
-          headers: {
-            'x-service-id': this.edgeNodeId,
-            'x-service-timestamp': timestamp.toString(),
-            'x-service-signature': signature,
-          },
+          headers,
           timeout: 3000,
         },
       );
