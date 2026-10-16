@@ -24,6 +24,16 @@ import * as crypto from 'crypto';
 import { MetricsService } from '../metrics/metrics.service';
 import { KafkaService } from '../kafka/kafka.service';
 import { trace } from '@opentelemetry/api';
+import {
+  verifyEdgeUrl,
+  signEdgeUrl,
+  signEdgeSegmentUrl,
+} from '../common/security/edge-url.util';
+import {
+  verifyServiceSignature,
+  signServiceRequest,
+} from '../common/security/service-hmac.util';
+import { Throttle } from '../common/decorators/throttle.decorator';
 
 interface PlacementResponse {
   fileId: string;
@@ -50,6 +60,8 @@ export class EdgeContentController {
   private readonly edgeRegion: string;
   private readonly peerTimeout: number;
   private readonly peerMaxAttempts: number;
+  private readonly serviceSecret: string;
+  private readonly edgeUrlSigningSecret: string;
 
   constructor(
     private readonly edgeCacheService: EdgeCacheService,
@@ -64,6 +76,65 @@ export class EdgeContentController {
     this.edgeRegion = this.configService.get<string>('EDGE_REGION', 'ap-south-1');
     this.peerTimeout = this.configService.get<number>('PEER_FETCH_TIMEOUT_MS', 2000);
     this.peerMaxAttempts = this.configService.get<number>('PEER_MAX_ATTEMPTS', 3);
+
+    const svcSecret =
+      this.configService.get<string>('INTERNAL_SERVICE_SECRET') ||
+      process.env.INTERNAL_SERVICE_SECRET;
+    if (!svcSecret) {
+      throw new Error(
+        'INTERNAL_SERVICE_SECRET is required on Edge Node. Boot halted.',
+      );
+    }
+    this.serviceSecret = svcSecret;
+
+    const signingSecret =
+      this.configService.get<string>('EDGE_URL_SIGNING_SECRET') ||
+      process.env.EDGE_URL_SIGNING_SECRET;
+    if (!signingSecret) {
+      throw new Error(
+        'EDGE_URL_SIGNING_SECRET is required on Edge Node. Boot halted.',
+      );
+    }
+    this.edgeUrlSigningSecret = signingSecret;
+  }
+
+  private validateServiceHmac(req: FastifyRequest): boolean {
+    const serviceId = req.headers['x-service-id'] as string;
+    const timestampStr = req.headers['x-service-timestamp'] as string;
+    const signature = req.headers['x-service-signature'] as string;
+
+    if (!serviceId || !timestampStr || !signature || !this.serviceSecret) {
+      return false;
+    }
+
+    const timestamp = parseInt(timestampStr, 10);
+    if (isNaN(timestamp)) {
+      return false;
+    }
+
+    return verifyServiceSignature(
+      serviceId,
+      (req.method || 'GET').toUpperCase(),
+      req.url,
+      timestamp,
+      signature,
+      this.serviceSecret,
+      req.body,
+    );
+  }
+
+  private getInternalAuthHeaders(
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Record<string, string> {
+    return signServiceRequest(
+      this.edgeNodeId,
+      method,
+      path,
+      this.serviceSecret,
+      body,
+    );
   }
 
   private resolvePeerEndpoint(edgeId: string, endpoint: string): string {
@@ -101,12 +172,36 @@ export class EdgeContentController {
   async getHlsContent(
     @Param('fileId') fileId: string,
     @Query('v') versionQuery: string,
+    @Query('exp') expQuery: string,
+    @Query('sig') sigQuery: string,
     @Req() req: FastifyRequest,
     @Res() res: FastifyReply,
   ) {
-    const versionStr = versionQuery ? versionQuery : '1';
     const urlParts = req.url.split('/hls/');
     const rawSubpath = urlParts[1]?.split('?')[0] || 'master.m3u8';
+
+    if (rawSubpath.includes('..') || rawSubpath.startsWith('/') || rawSubpath.startsWith('\\')) {
+      return this.sendResponse(res, HttpStatus.BAD_REQUEST, 'Invalid HLS path');
+    }
+
+    const versionStr = versionQuery ? String(versionQuery) : '1';
+
+    // Verify authentication before ANY cache read, MinIO fetch, or peer fetch
+    const isServiceAuth = this.validateServiceHmac(req);
+    const isSignedUrl = verifyEdgeUrl(
+      fileId,
+      versionStr,
+      expQuery,
+      sigQuery,
+      this.edgeUrlSigningSecret,
+      rawSubpath,
+    );
+
+    if (!isServiceAuth && !isSignedUrl) {
+      return this.sendResponse(res, HttpStatus.UNAUTHORIZED, {
+        error: 'Unauthorized: valid signature or service credentials required',
+      });
+    }
 
     const isSegment = rawSubpath.endsWith('.ts');
     const isPlaylist = rawSubpath.endsWith('.m3u8');
@@ -134,61 +229,172 @@ export class EdgeContentController {
       rawSubpath,
     );
 
-    if (cachedBuffer) {
+    let rawBuffer: Buffer | null = cachedBuffer;
+
+    if (rawBuffer) {
       this.setHeader(res, 'X-Cache', 'HIT');
       this.metricsService.cacheHitsTotal.inc();
-      this.metricsService.bytesServedTotal.inc({ source: 'edge_cache' }, cachedBuffer.length);
-      return this.sendResponse(res, HttpStatus.OK, cachedBuffer);
-    }
-
-    this.setHeader(res, 'X-Cache', 'MISS');
-    this.metricsService.cacheMissesTotal.inc();
-
-    try {
-      const metaRes = await firstValueFrom(
-        this.httpService.get(
-          `${this.coreApiUrl}/api/v1/internal/metadata/files/${fileId}/versions/${versionStr}`,
-        ),
+      this.metricsService.bytesServedTotal.inc(
+        { source: 'edge_cache' },
+        rawBuffer.length,
       );
-      const ownerId = metaRes.data?.file?.ownerId || metaRes.data?.ownerId;
-      const versionId = metaRes.data?.id || metaRes.data?.versionId || `v${versionStr}`;
+    } else {
+      this.setHeader(res, 'X-Cache', 'MISS');
+      this.metricsService.cacheMissesTotal.inc();
 
-      const minioKey = `hls/${ownerId}/${fileId}/${versionId}/${rawSubpath}`;
-      const stream = await this.minioService.getObjectStream(minioKey);
-
-      const chunks: Buffer[] = [];
-      await new Promise<void>((resolve, reject) => {
-        stream.on('data', (chunk: Buffer) => chunks.push(chunk));
-        stream.on('end', () => resolve());
-        stream.on('error', (err: Error) => reject(err));
-      });
-
-      const fullBuffer = Buffer.concat(chunks);
-
-      void this.edgeCacheService
-        .cacheHlsContent(fileId, versionStr, rawSubpath, fullBuffer, ttlSeconds)
-        .catch((e: Error) =>
-          this.logger.error(`Failed to cache HLS ${rawSubpath}: ${e.message}`),
+      try {
+        const metaPath = `/api/v1/internal/metadata/files/${fileId}/versions/${versionStr}`;
+        const metaRes = await firstValueFrom(
+          this.httpService.get(
+            `${this.coreApiUrl}${metaPath}`,
+            {
+              headers: this.getInternalAuthHeaders('GET', metaPath),
+            },
+          ),
         );
+        const ownerId = metaRes.data?.file?.ownerId || metaRes.data?.ownerId;
+        const versionId =
+          metaRes.data?.id || metaRes.data?.versionId || `v${versionStr}`;
 
-      this.metricsService.bytesServedTotal.inc({ source: 'origin' }, fullBuffer.length);
-      return this.sendResponse(res, HttpStatus.OK, fullBuffer);
-    } catch (err: unknown) {
-      const errMsg = err instanceof Error ? err.message : 'Not found';
-      this.logger.warn(`HLS fetch failed for ${fileId}/${rawSubpath}: ${errMsg}`);
-      return this.sendResponse(res, HttpStatus.NOT_FOUND, { error: 'HLS stream not found' });
+        const minioKey = `hls/${ownerId}/${fileId}/${versionId}/${rawSubpath}`;
+        const stream = await this.minioService.getObjectStream(minioKey);
+
+        const chunks: Buffer[] = [];
+        await new Promise<void>((resolve, reject) => {
+          stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+          stream.on('end', () => resolve());
+          stream.on('error', (err: Error) => reject(err));
+        });
+
+        rawBuffer = Buffer.concat(chunks);
+
+        void this.edgeCacheService
+          .cacheHlsContent(fileId, versionStr, rawSubpath, rawBuffer, ttlSeconds)
+          .catch((e: Error) =>
+            this.logger.error(`Failed to cache HLS ${rawSubpath}: ${e.message}`),
+          );
+
+        this.metricsService.bytesServedTotal.inc(
+          { source: 'origin' },
+          rawBuffer.length,
+        );
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : 'Not found';
+        this.logger.warn(
+          `HLS fetch failed for ${fileId}/${rawSubpath}: ${errMsg}`,
+        );
+        this.setHeader(res, 'Content-Type', 'application/json');
+        return this.sendResponse(res, HttpStatus.NOT_FOUND, JSON.stringify({
+          error: 'HLS stream not found',
+        }));
+      }
     }
+
+    let responseBuffer: Buffer = rawBuffer;
+    if (isPlaylist && this.edgeUrlSigningSecret) {
+      const exp =
+        expQuery || (Math.floor(Date.now() / 1000) + 3600).toString();
+      const playlistText = rawBuffer.toString('utf-8');
+      const rewrittenText = this.rewriteM3u8Playlist(
+        playlistText,
+        fileId,
+        versionStr,
+        exp,
+        this.edgeUrlSigningSecret,
+        rawSubpath,
+      );
+      responseBuffer = Buffer.from(rewrittenText, 'utf-8');
+    }
+
+    return this.sendResponse(res, HttpStatus.OK, responseBuffer);
+  }
+
+  private rewriteM3u8Playlist(
+    playlist: string,
+    fileId: string,
+    versionStr: string,
+    exp: string | number,
+    secret: string,
+    currentSubpath: string,
+  ): string {
+    const lastSlash = currentSubpath.lastIndexOf('/');
+    const currentDir =
+      lastSlash >= 0 ? currentSubpath.substring(0, lastSlash + 1) : '';
+
+    return playlist
+      .split('\n')
+      .map((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) {
+          return line;
+        }
+
+        const rewriteUri = (targetUri: string): string => {
+          const cleanUri = targetUri.split('?')[0];
+          const resolvedSubpath = cleanUri.startsWith('/')
+            ? cleanUri.substring(1)
+            : `${currentDir}${cleanUri}`;
+
+          const signed = signEdgeSegmentUrl(
+            fileId,
+            versionStr,
+            resolvedSubpath,
+            exp,
+            secret,
+          );
+          const sep = targetUri.includes('?') ? '&' : '?';
+          return `${targetUri}${sep}v=${encodeURIComponent(versionStr)}&${signed.query}`;
+        };
+
+        if (trimmed.startsWith('#')) {
+          if (trimmed.includes('URI="')) {
+            return trimmed.replace(/URI="([^"]+)"/g, (_m, uri: string) => {
+              return `URI="${rewriteUri(uri)}"`;
+            });
+          }
+          return line;
+        }
+
+        return rewriteUri(trimmed);
+      })
+      .join('\n');
   }
 
   @Get(':fileId')
+  @Throttle(120, 60)
   async getEdgeContent(
     @Param('fileId') fileId: string,
     @Query('v', ParseIntPipe) version: number,
+    @Query('exp') expQuery: string,
+    @Query('sig') sigQuery: string,
     @Headers('x-cache-fill-mode') cacheFillMode: string,
+    @Req() req: FastifyRequest,
     @Res() res: FastifyReply,
   ) {
     const reqStart = performance.now();
     const versionStr = version.toString();
+
+    // Verify authentication before ANY cache read, MinIO fetch, or peer fetch
+    const isServiceAuth = this.validateServiceHmac(req);
+    const isSignedUrl = verifyEdgeUrl(
+      fileId,
+      versionStr,
+      expQuery,
+      sigQuery,
+      this.edgeUrlSigningSecret,
+    );
+
+    if (cacheFillMode === 'peer' && !isServiceAuth) {
+      return this.sendResponse(res, HttpStatus.UNAUTHORIZED, {
+        error: 'Unauthorized peer request: valid service credentials required',
+      });
+    }
+
+    if (!isServiceAuth && !isSignedUrl) {
+      return this.sendResponse(res, HttpStatus.UNAUTHORIZED, {
+        error: 'Unauthorized: valid signature or service credentials required',
+      });
+    }
 
     const activeSpan = trace.getActiveSpan();
     if (activeSpan) {
@@ -277,10 +483,16 @@ export class EdgeContentController {
       // 4. Placement Lookup from Core
       let placement: PlacementResponse | null = null;
       try {
+        const placementPath = `/api/v1/internal/placement/${fileId}/v/${version}`;
         const response = await firstValueFrom(
           this.httpService.get(
-            `${this.coreApiUrl}/api/v1/internal/placement/${fileId}/v/${version}`,
-            { headers: { 'X-Edge-Node-Id': this.edgeNodeId } },
+            `${this.coreApiUrl}${placementPath}`,
+            {
+              headers: {
+                ...this.getInternalAuthHeaders('GET', placementPath),
+                'X-Edge-Node-Id': this.edgeNodeId,
+              },
+            },
           ),
         );
         placement = response.data;
@@ -299,10 +511,15 @@ export class EdgeContentController {
             );
 
             const peerTarget = this.resolvePeerEndpoint(peer.edgeId, peer.endpoint);
+            const peerPath = `/edge/content/${fileId}?v=${version}`;
+            const peerHeaders = this.getInternalAuthHeaders('GET', peerPath);
             const peerResponse = await this.httpService.axiosRef.get(
-              `${peerTarget}/edge/content/${fileId}?v=${version}`,
+              `${peerTarget}${peerPath}`,
               {
-                headers: { 'X-Cache-Fill-Mode': 'peer' },
+                headers: {
+                  ...peerHeaders,
+                  'X-Cache-Fill-Mode': 'peer',
+                },
                 responseType: 'arraybuffer',
                 timeout: this.peerTimeout,
                 validateStatus: (status) => status === 200 || status === 404,
@@ -417,10 +634,25 @@ export class EdgeContentController {
 
   @Post(':fileId/purge')
   @HttpCode(HttpStatus.OK)
-  async purgeLocalCache(@Param('fileId') fileId: string) {
+  @Throttle(20, 60)
+  async purgeLocalCache(
+    @Param('fileId') fileId: string,
+    @Req() req: FastifyRequest,
+    @Res() res: FastifyReply,
+  ) {
+    if (!this.validateServiceHmac(req)) {
+      return this.sendResponse(res, HttpStatus.UNAUTHORIZED, {
+        error: 'Unauthorized: internal service credentials required to purge edge cache',
+      });
+    }
     const keys = await this.edgeCacheService.evictFile(fileId);
     this.logger.log(`[Cache Purged] Evicted file ${fileId} from Edge RAM cache`);
-    return { success: true, edgeNodeId: this.edgeNodeId, fileId, message: 'Local RAM cache evicted' };
+    return this.sendResponse(res, HttpStatus.OK, {
+      success: true,
+      edgeNodeId: this.edgeNodeId,
+      fileId,
+      message: 'Local RAM cache evicted',
+    });
   }
 
   
@@ -439,9 +671,11 @@ export class EdgeContentController {
 
     
     try {
+      const metaPath = `/api/v1/internal/metadata/files/${fileId}/versions/${version}`;
       const response = await firstValueFrom(
         this.httpService.get(
-          `${this.coreApiUrl}/api/v1/internal/metadata/files/${fileId}/versions/${version}`,
+          `${this.coreApiUrl}${metaPath}`,
+          { headers: this.getInternalAuthHeaders('GET', metaPath) },
         ),
       );
       return response.data.storagePath;
