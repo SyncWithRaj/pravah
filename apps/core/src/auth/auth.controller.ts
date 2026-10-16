@@ -14,24 +14,30 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
+import { RateLimitGuard } from '../common/guards/rate-limit.guard';
+import { Throttle } from '../common/decorators/throttle.decorator';
 
 @Controller('auth')
+@UseGuards(RateLimitGuard)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @Throttle(10, 60) // 10 registrations per minute per IP
   async register(@Body() registerDto: RegisterDto) {
     return this.authService.register(registerDto);
   }
 
   @HttpCode(HttpStatus.OK)
   @Post('login')
+  @Throttle(10, 60) // 10 login attempts per minute per IP
   async login(@Body() loginDto: LoginDto) {
     return this.authService.login(loginDto);
   }
 
   @HttpCode(HttpStatus.OK)
   @Post('refresh')
+  @Throttle(30, 60) // 30 refresh calls per minute per IP
   async refresh(@Body('refresh_token') refreshToken: string) {
     if (!refreshToken) {
       throw new BadRequestException('refresh_token is required');
