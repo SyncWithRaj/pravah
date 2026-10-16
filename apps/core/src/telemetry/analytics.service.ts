@@ -44,6 +44,9 @@ export class AnalyticsService {
 
   // Process cache.access event from Kafka / Edge nodes
   handleCacheAccess(data: CacheAccessMessage) {
+    this.logger.log(
+      `[Telemetry] Processed cache.access event for file ${data.fileId} from ${data.edgeId} (${data.eventType})`,
+    );
     this.totalBytesServed += data.bytesServed || 0;
     this.intervalBytes += data.bytesServed || 0;
     this.intervalRequests += 1;
