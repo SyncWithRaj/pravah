@@ -50,7 +50,7 @@ services:
 
   # 4. MinIO (S3 Compatible Distributed Object Storage)
   minio:
-    image: minio/minio:latest
+    image: pravah-minio:latest
     container_name: pravah-minio
     restart: always
     command: server /data --console-address ":9001"
@@ -70,6 +70,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.core
+    image: pravah-core:latest
     container_name: pravah-core
     restart: always
     ports:

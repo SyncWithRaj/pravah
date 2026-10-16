@@ -16,6 +16,7 @@ services:
     build:
       context: ../..
       dockerfile: infra/docker/Dockerfile.edge
+    image: pravah-edge:latest
     container_name: pravah-edge
     restart: always
     ports:
