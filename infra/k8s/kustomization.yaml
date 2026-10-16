@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pravah-system
+
+resources:
+  - 00-namespace.yaml
+  - 01-configmap.yaml
+  - 02-secrets.yaml
+  - 03-rbac.yaml
+  - 10-postgres-statefulset.yaml
+  - 11-redis-cluster.yaml
+  - 12-redpanda-kafka.yaml
+  - 13-minio-s3.yaml
+  - 20-core-deployment.yaml
+  - 21-core-service.yaml
+  - 30-edge-deployment.yaml
+  - 31-edge-service.yaml
+  - 32-spoke-edge-deployment.yaml
+  - 40-edge-hpa.yaml
+  - 41-core-hpa.yaml
+  - 50-ingress.yaml
+  - 51-network-policy.yaml
+
+# If deploying without External Secrets Operator, uncomment secretGenerator below
+# and create .secrets.env from .secrets.env.example:
+# secretGenerator:
+#   - name: pravah-secrets
+#     options:
+#       disableNameSuffixHash: true
+#     envs:
+#       - .secrets.env

@@ -3,8 +3,10 @@ packages:
   - 'libs/*'
 
 allowBuilds:
+  '@nestjs/core': false
   '@prisma/engines': true
   argon2: true
   msgpackr-extract: true
   prisma: true
+  protobufjs: false
   unrs-resolver: true

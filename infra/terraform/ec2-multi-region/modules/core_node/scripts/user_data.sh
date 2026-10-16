@@ -43,19 +43,24 @@ export CORE_PUBLIC_IP="$PUBLIC_IP"
 
 # Generate production .env from example or defaults
 if [ ! -f .env ]; then
+    DB_PASS="${POSTGRES_PASSWORD:-$(openssl rand -hex 16)}"
+    MINIO_PASS="${MINIO_ROOT_PASSWORD:-$(openssl rand -hex 16)}"
+    JWT_SEC="${JWT_SECRET:-$(openssl rand -hex 32)}"
+    INTERNAL_SEC="${INTERNAL_SERVICE_SECRET:-$(openssl rand -hex 32)}"
     cat <<EOF > .env
 PORT=3000
-DATABASE_URL=postgresql://admin_postgres:postgres_password@postgres:5432/pravah_db?schema=public
+DATABASE_URL=postgresql://admin_postgres:$${DB_PASS}@postgres:5432/pravah_db?schema=public
 REDIS_HOST=redis
 REDIS_PORT=6379
 KAFKA_BROKERS=redpanda:9092
 MINIO_ENDPOINT=minio
 MINIO_PORT=9000
 MINIO_ROOT_USER=admin_minio
-MINIO_ROOT_PASSWORD=minio_password
+MINIO_ROOT_PASSWORD=$${MINIO_PASS}
 MINIO_ACCESS_KEY=admin_minio
-MINIO_SECRET_KEY=minio_password
-JWT_SECRET=super_secret_jwt_key_for_pravah_cdn_production_2026
+MINIO_SECRET_KEY=$${MINIO_PASS}
+JWT_SECRET=$${JWT_SEC}
+INTERNAL_SERVICE_SECRET=$${INTERNAL_SEC}
 CORE_PUBLIC_IP=$PUBLIC_IP
 OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
 OTEL_SERVICE_NAME=pravah-core

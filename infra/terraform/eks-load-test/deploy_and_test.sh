@@ -92,8 +92,8 @@ kubectl wait --for=condition=ready pod -l app=pravah-postgres -n pravah-system -
 kubectl port-forward -n pravah-system svc/pravah-postgres 5433:5432 &
 PF_PID=$!
 sleep 3
-cd "$PROJECT_DIR"
-DATABASE_URL="postgresql://pravah_admin:PravahProductionSecurePassword2026!@127.0.0.1:5433/pravah_db?schema=public&sslmode=disable" pnpm --filter core exec prisma db push
+DB_PASS="${POSTGRES_PASSWORD:-$(kubectl get secret pravah-secrets -n pravah-system -o jsonpath='{.data.POSTGRES_PASSWORD}' 2>/dev/null | base64 --decode || echo '')}"
+DATABASE_URL="postgresql://pravah_admin:${DB_PASS}@127.0.0.1:5433/pravah_db?schema=public&sslmode=disable" pnpm --filter core exec prisma db push
 kill $PF_PID || true
 
 # ---------------------------------------------------------------
