@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  ConflictException,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
@@ -73,34 +74,38 @@ export class UploadService {
       throw new ForbiddenException('Access denied');
     }
 
-    await this.prisma.fileChunk.deleteMany({
-      where: { fileId: file.id },
-    });
+    const updatedFile = await this.prisma.$transaction(async (tx) => {
+      await tx.fileChunk.deleteMany({
+        where: { fileId: file.id },
+      });
 
-    const updatedFile = await this.prisma.file.update({
-      where: { id: file.id },
-      data: {
-        name: dto.name,
-        mimeType: dto.mimeType,
-        totalSize: BigInt(dto.totalSize),
-        totalChunks: dto.totalChunks,
-        uploadedChunks: 0,
-        status: FileStatus.PENDING,
-        checksum: dto.fullFileChecksum,
-      },
-    });
+      const updated = await tx.file.update({
+        where: { id: file.id },
+        data: {
+          name: dto.name,
+          mimeType: dto.mimeType,
+          totalSize: BigInt(dto.totalSize),
+          totalChunks: dto.totalChunks,
+          uploadedChunks: 0,
+          status: FileStatus.PENDING,
+          checksum: dto.fullFileChecksum,
+        },
+      });
 
-    const chunkData = Array.from({ length: dto.totalChunks }, (_, index) => ({
-      fileId: file.id,
-      chunkIndex: index,
-      size: 0,
-      checksum: '',
-      storagePath: `chunks/${file.id}/chunk-${index}`,
-      status: ChunkStatus.PENDING,
-    }));
+      const chunkData = Array.from({ length: dto.totalChunks }, (_, index) => ({
+        fileId: file.id,
+        chunkIndex: index,
+        size: 0,
+        checksum: '',
+        storagePath: `chunks/${file.id}/chunk-${index}`,
+        status: ChunkStatus.PENDING,
+      }));
 
-    await this.prisma.fileChunk.createMany({
-      data: chunkData,
+      await tx.fileChunk.createMany({
+        data: chunkData,
+      });
+
+      return updated;
     });
 
     return {
@@ -134,8 +139,26 @@ export class UploadService {
       throw new ForbiddenException('Access denied');
     }
 
-    if (file.status === FileStatus.COMPLETED) {
-      throw new BadRequestException('Upload already completed');
+    if (
+      file.status !== FileStatus.PENDING &&
+      file.status !== FileStatus.UPLOADING
+    ) {
+      throw new BadRequestException(
+        `Cannot upload chunks while file is in status ${file.status}`,
+      );
+    }
+
+    const existingChunk = await this.prisma.fileChunk.findUnique({
+      where: {
+        fileId_chunkIndex: {
+          fileId: file.id,
+          chunkIndex: chunkIndex,
+        },
+      },
+    });
+
+    if (!existingChunk) {
+      throw new BadRequestException(`Invalid chunk index ${chunkIndex}`);
     }
 
     const calculatedChecksum = crypto
@@ -143,14 +166,13 @@ export class UploadService {
       .update(fileBuffer)
       .digest('hex');
 
-    if (
-      checksum.trim().toLowerCase() !== 'skip' &&
-      calculatedChecksum.toLowerCase() !== checksum.trim().toLowerCase()
-    ) {
+    if (calculatedChecksum.toLowerCase() !== checksum.trim().toLowerCase()) {
       throw new BadRequestException(
         `Checksum mismatch for chunk ${chunkIndex}. Server calculated: ${calculatedChecksum}, received: ${checksum}`,
       );
     }
+
+    const isNewVerification = existingChunk.status !== ChunkStatus.VERIFIED;
 
     const chunkStoragePath = `chunks/${file.id}/chunk-${chunkIndex}`;
     await this.minioService.uploadChunk(chunkStoragePath, fileBuffer);
@@ -165,7 +187,7 @@ export class UploadService {
         },
         data: {
           size: fileBuffer.length,
-          checksum: checksum,
+          checksum: calculatedChecksum,
           status: ChunkStatus.VERIFIED,
         },
       }),
@@ -173,9 +195,7 @@ export class UploadService {
         where: { id: file.id },
         data: {
           status: FileStatus.UPLOADING,
-          uploadedChunks: {
-            increment: 1,
-          },
+          ...(isNewVerification ? { uploadedChunks: { increment: 1 } } : {}),
         },
       }),
     ]);
@@ -259,10 +279,19 @@ export class UploadService {
       );
     }
 
-    await this.prisma.file.update({
-      where: { id: file.id },
+    const claimed = await this.prisma.file.updateMany({
+      where: {
+        id: file.id,
+        status: { in: [FileStatus.PENDING, FileStatus.UPLOADING] },
+      },
       data: { status: FileStatus.ASSEMBLING },
     });
+
+    if (claimed.count === 0) {
+      throw new ConflictException(
+        'Upload completion is already in progress or already completed',
+      );
+    }
 
     const maxVersion = await this.prisma.fileVersion.findFirst({
       where: { fileId: file.id },
@@ -374,8 +403,8 @@ export class UploadService {
         status: updatedFile.status,
       };
     } catch (err) {
-      await this.prisma.file.update({
-        where: { id: file.id },
+      await this.prisma.file.updateMany({
+        where: { id: file.id, status: FileStatus.ASSEMBLING },
         data: { status: FileStatus.FAILED },
       });
       throw err;

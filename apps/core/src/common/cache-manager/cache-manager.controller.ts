@@ -7,13 +7,20 @@ import {
   Logger,
   Inject,
   forwardRef,
+  UseGuards,
 } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { CacheManagerService } from './cache-manager.service';
 import { KafkaService } from '../kafka/kafka.service';
 import { TelemetryGateway } from '../../telemetry/telemetry.gateway';
+import { UnifiedAuthGuard, RolesGuard, Roles } from '../../auth';
+import { Role } from '@prisma/client';
+import { Throttle } from '../decorators/throttle.decorator';
 
 @Controller(['admin/cache', 'metadata'])
+@UseGuards(UnifiedAuthGuard, RolesGuard)
+@Roles(Role.ADMIN, Role.INTERNAL)
+@Throttle(10, 60)
 export class CacheManagerController {
   private readonly logger = new Logger(CacheManagerController.name);
 

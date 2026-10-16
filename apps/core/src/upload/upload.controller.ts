@@ -20,9 +20,11 @@ import { UnifiedAuthGuard, RolesGuard, Roles, CurrentUser } from '../auth';
 import { User, Role } from '@prisma/client';
 
 import { TelemetryGateway } from '../telemetry/telemetry.gateway';
+import { Throttle } from '../common/decorators/throttle.decorator';
 
 @UseGuards(UnifiedAuthGuard, RolesGuard)
 @Roles(Role.STREAMER, Role.ADMIN)
+@Throttle(60, 60)
 @Controller('upload')
 export class UploadController {
   constructor(
@@ -48,7 +50,15 @@ export class UploadController {
   }
 
   @Put(':fileId/chunk/:chunkIndex')
-  @UseInterceptors(FileInterceptor('file'))
+  @Throttle(3000, 60)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: {
+        fileSize: 50 * 1024 * 1024, // 50MB max chunk size
+        files: 1,
+      },
+    }),
+  )
   async uploadChunk(
     @CurrentUser() user: Omit<User, 'passwordHash'>,
     @Param('fileId') fileId: string,

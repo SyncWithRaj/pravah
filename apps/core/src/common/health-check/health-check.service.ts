@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Interval } from '@nestjs/schedule';
 import { Redis } from 'ioredis';
+import { REDIS_PASSWORD } from '../redis/redis.constants';
 import { PrismaService } from '../../prisma/prisma.service';
 import { KafkaService } from '../kafka/kafka.service';
 import { EdgeNodeStatus } from '@prisma/client';
@@ -37,9 +38,11 @@ export class HealthCheckService implements OnModuleInit {
       this.configService.get<string>('REDIS_HOST') || 'localhost';
     const redisPort = this.configService.get<number>('REDIS_PORT') || 6379;
 
+    const redisPassword = REDIS_PASSWORD();
     this.redis = new Redis({
       host: redisHost,
       port: redisPort,
+      ...(redisPassword ? { password: redisPassword } : {}),
     });
 
     this.redis.on('connect', () => {
@@ -181,5 +184,9 @@ export class HealthCheckService implements OnModuleInit {
 
   getAllNodes(): EdgeNodeRecord[] {
     return Array.from(this.nodeMap.values());
+  }
+
+  isRegistered(edgeId: string): boolean {
+    return this.nodeMap.has(edgeId);
   }
 }

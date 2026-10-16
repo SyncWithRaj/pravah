@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Redis } from 'ioredis';
 import { KafkaService } from '../kafka/kafka.service';
+import { REDIS_PASSWORD } from '../redis/redis.constants';
 
 export interface CacheMetadata {
   ownerId: string;
@@ -37,9 +38,11 @@ export class CacheManagerService implements OnModuleInit, OnModuleDestroy {
       this.configService.get<string>('REDIS_HOST') || 'localhost';
     const redisPort = this.configService.get<number>('REDIS_PORT') || 6379;
 
+    const redisPassword = REDIS_PASSWORD();
     this.redis = new Redis({
       host: redisHost,
       port: redisPort,
+      ...(redisPassword ? { password: redisPassword } : {}),
     });
 
     this.redis.on('connect', () => {
@@ -171,8 +174,13 @@ export class CacheManagerService implements OnModuleInit, OnModuleDestroy {
     metadata: CacheMetadata,
     binary: Buffer,
   ): Promise<void> {
-    const pipeline = this.redis.pipeline();
     const baseKey = `file:${fileId}:${version}`;
+    const dataKey = `${baseKey}:data`;
+
+    // Idempotent accounting: check existing size to prevent duplicate writes from inflating cache:size
+    const previousSize = await this.redis.strlen(dataKey);
+
+    const pipeline = this.redis.pipeline();
 
     pipeline.hset(`${baseKey}:meta`, {
       ownerId: metadata.ownerId,
@@ -184,11 +192,14 @@ export class CacheManagerService implements OnModuleInit, OnModuleDestroy {
       contentEncoding: metadata.contentEncoding || '',
     });
 
-    pipeline.set(`${baseKey}:data`, binary);
+    pipeline.set(dataKey, binary);
 
     pipeline.zadd('cache:lru', Date.now(), baseKey);
 
-    pipeline.incrby('cache:size', binary.length);
+    const sizeDelta = binary.length - (previousSize || 0);
+    if (sizeDelta !== 0) {
+      pipeline.incrby('cache:size', sizeDelta);
+    }
 
     pipeline.sadd(`file:${fileId}:keys`, baseKey);
 

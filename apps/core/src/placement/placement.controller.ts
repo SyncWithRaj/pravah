@@ -1,6 +1,17 @@
-import { Controller, Get, Param, Headers, ParseIntPipe } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Headers,
+  ParseIntPipe,
+  UseGuards,
+} from '@nestjs/common';
 import { PlacementService } from './placement.service';
+import { UnifiedAuthGuard, RolesGuard, Roles } from '../auth';
+import { Role } from '@prisma/client';
 
+@UseGuards(UnifiedAuthGuard, RolesGuard)
+@Roles(Role.INTERNAL)
 @Controller('internal/placement')
 export class PlacementController {
   constructor(private readonly placementService: PlacementService) {}
