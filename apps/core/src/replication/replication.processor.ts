@@ -108,7 +108,7 @@ export class ReplicationProcessor extends WorkerHost {
 
       await this.cacheManagerService.cacheFile(
         fileId,
-        version.versionNumber.toString(),
+        version.id,
         metadata,
         fullBuffer,
       );

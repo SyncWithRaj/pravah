@@ -12,6 +12,7 @@ import {
   FileStatus,
   ReplicationJobStatus,
 } from '@prisma/client';
+import { UnifiedAuthGuard, RolesGuard } from '../auth';
 
 describe('Phase 7 Module 2: Edge Node Crash Failover & Dynamic Self-Healing Replication', () => {
   let replicationService: ReplicationService;
@@ -112,7 +113,12 @@ describe('Phase 7 Module 2: Edge Node Crash Failover & Dynamic Self-Healing Repl
         { provide: MetricsService, useValue: mockMetricsService },
         { provide: TelemetryGateway, useValue: mockTelemetryGateway },
       ],
-    }).compile();
+    })
+      .overrideGuard(UnifiedAuthGuard)
+      .useValue({ canActivate: () => true })
+      .overrideGuard(RolesGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
 
     replicationService = module.get<ReplicationService>(ReplicationService);
     replicationController = module.get<ReplicationController>(
