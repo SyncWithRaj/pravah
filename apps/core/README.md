@@ -206,6 +206,13 @@ The core database schema is modeled in [`prisma/schema.prisma`](file:///home/raj
 | `REDIS_HOST` | `localhost` | Redis host for queues, locks, and heartbeat registries |
 | `REDIS_PORT` | `6379` | Redis TCP port |
 | `KAFKA_BROKERS` | `localhost:9092` | Comma-delimited list of Kafka / RedPanda brokers |
+| `REDIS_PASSWORD` | *(required in prod)* | Authentication password for Redis instances (`requirepass`) |
+| `KAFKA_ADMIN_PASSWORD` | *(generated)* | SCRAM-SHA-256 password for Redpanda cluster superuser (`admin`) |
+| `KAFKA_SASL_USERNAME` | `pravah-core` | SCRAM-SHA-256 username for Core producer & consumer |
+| `KAFKA_SASL_PASSWORD` | *(generated)* | SCRAM-SHA-256 password for Core service |
+| `KAFKA_SASL_MECHANISM` | `scram-sha-256` | SASL mechanism (`scram-sha-256`, `scram-sha-512`, `plain`) |
+| `KAFKA_EDGE_SASL_USERNAME` | `pravah-edge` | SCRAM-SHA-256 username for Edge nodes (telemetry producer) |
+| `KAFKA_EDGE_SASL_PASSWORD` | *(generated)* | SCRAM-SHA-256 password for Edge nodes |
 | `MINIO_ENDPOINT` | `localhost` | MinIO / S3 endpoint address |
 | `MINIO_PORT` | `9000` | MinIO S3 API port |
 | `MINIO_ACCESS_KEY` | `admin_minio` | S3 API root access key |
@@ -214,6 +221,49 @@ The core database schema is modeled in [`prisma/schema.prisma`](file:///home/raj
 | `JWT_SECRET` | `super-secret-jwt-key` | HMAC key for signing user authentication tokens |
 | `INTERNAL_SERVICE_SECRET` | `pravah-internal-microservice-super-secret-2026` | Shared secret for inter-service HMAC signatures |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://localhost:4318` | OpenTelemetry OTLP collector gRPC/HTTP endpoint |
+
+---
+
+## Kafka SASL Authentication & Access Control (ACLs)
+
+Pravah enforces SASL authentication (`SCRAM-SHA-256`) and least-privilege Access Control Lists (ACLs) across all Kafka / Redpanda broker traffic (closing V-02).
+
+### Security Architecture & Permissions
+- **Core Plane (`pravah-core`)**: Consumes and produces across core messaging topics:
+  - Produces: `file.*`, `cache.*`, `edge.*`, `replication.*`, `video.*`
+  - Consumes: `file.*`, `cache.*`, `edge.*`, `replication.*` (consumer groups prefixed with `pravah-`)
+- **Edge Data Plane (`pravah-edge`)**: Producer-only telemetry access:
+  - Produces: `cache.access`, `edge.health_changed` (`cache.*`, `edge.*`)
+  - No read or administration permissions granted on origin data or internal replication channels.
+
+### Automated Provisioning via `kafka-init`
+The `kafka-init` service in `infra/docker/docker-compose.core.yml` executes once on stack startup (`restart: "no"`) before Core and Edge containers initialize:
+1. Waits for Redpanda Admin API (`9644`) to become healthy.
+2. Creates the `pravah-core`, `pravah-edge`, and cluster superuser accounts if they do not already exist.
+3. Provisions least-privilege topic and consumer group ACLs for both identities.
+4. Downstream services (`core-app`, `edge-app`, `edge-node-02`, `edge-node-03`) specify `depends_on: kafka-init: condition: service_completed_successfully`.
+
+### Manual Re-Provisioning
+To re-run bootstrap or reapply ACLs idempotently without restarting Redpanda:
+```bash
+docker compose -f infra/docker/docker-compose.core.yml run --rm kafka-init
+```
+
+### Credential Rotation Workflow
+When rotating SASL credentials for Core, Edge, or Admin:
+1. Update `KAFKA_SASL_PASSWORD`, `KAFKA_EDGE_SASL_PASSWORD`, or `KAFKA_ADMIN_PASSWORD` in `.env`.
+2. Update the credentials on the Redpanda broker:
+   ```bash
+   docker exec pravah-redpanda rpk security user update <username> \
+     --new-password '<new-password>' \
+     --mechanism scram-sha-256 \
+     -X admin.hosts=127.0.0.1:9644
+   ```
+3. Restart the dependent application containers to load the updated `.env` secrets:
+   ```bash
+   docker compose -f infra/docker/docker-compose.core.yml restart core-app
+   docker compose -f infra/docker/docker-compose.edge.yml restart edge-app edge-node-02 edge-node-03
+   ```
 
 ---
 
