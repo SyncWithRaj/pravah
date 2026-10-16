@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { UnauthorizedException } from '@nestjs/common';
 import { AuthService } from './auth.service';
@@ -84,8 +85,12 @@ describe('AuthService', () => {
       });
       prisma.user.findUnique.mockResolvedValue(mockUser);
 
-      await expect(service.refreshToken('legacy-refresh-token')).rejects.toThrow(
-        new UnauthorizedException('Legacy refresh token not supported. Please log in again.'),
+      await expect(
+        service.refreshToken('legacy-refresh-token'),
+      ).rejects.toThrow(
+        new UnauthorizedException(
+          'Legacy refresh token not supported. Please log in again.',
+        ),
       );
     });
 
@@ -222,16 +227,24 @@ describe('AuthService', () => {
       service.setRedis(mockRedis);
 
       await expect(service.refreshToken('reused-token')).rejects.toThrow(
-        new UnauthorizedException('Refresh token reuse detected. Revoked token family.'),
+        new UnauthorizedException(
+          'Refresh token reuse detected. Revoked token family.',
+        ),
       );
 
       // Verify all tokens in family-A were revoked
-      expect(deletedKeys).toContain(`auth:refresh:${mockUser.id}:reused-jti-101`);
-      expect(deletedKeys).toContain(`auth:refresh:${mockUser.id}:sibling-jti-102`);
+      expect(deletedKeys).toContain(
+        `auth:refresh:${mockUser.id}:reused-jti-101`,
+      );
+      expect(deletedKeys).toContain(
+        `auth:refresh:${mockUser.id}:sibling-jti-102`,
+      );
       expect(deletedKeys).toContain('auth:refreshfamily:family-A');
 
       // Verify other session tokens (e.g. from family-B) were NOT touched
-      expect(deletedKeys).not.toContain(`auth:refresh:${mockUser.id}:other-session-jti`);
+      expect(deletedKeys).not.toContain(
+        `auth:refresh:${mockUser.id}:other-session-jti`,
+      );
     });
   });
 });

@@ -290,15 +290,19 @@ export class ReplicationService implements OnModuleInit {
     };
 
     try {
-      await this.getEdgeQueue(record.edgeNodeId).add('replicate-file', jobData, {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 2000,
+      await this.getEdgeQueue(record.edgeNodeId).add(
+        'replicate-file',
+        jobData,
+        {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 2000,
+          },
+          removeOnComplete: true,
+          removeOnFail: false,
         },
-        removeOnComplete: true,
-        removeOnFail: false,
-      });
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       this.logger.error(
@@ -517,16 +521,20 @@ export class ReplicationService implements OnModuleInit {
         };
 
         try {
-          await this.getEdgeQueue(targetNode.id).add('replicate-file', jobData, {
-            attempts: 3,
-            priority: 3,
-            backoff: {
-              type: 'exponential',
-              delay: 2000,
+          await this.getEdgeQueue(targetNode.id).add(
+            'replicate-file',
+            jobData,
+            {
+              attempts: 3,
+              priority: 3,
+              backoff: {
+                type: 'exponential',
+                delay: 2000,
+              },
+              removeOnComplete: true,
+              removeOnFail: false,
             },
-            removeOnComplete: true,
-            removeOnFail: false,
-          });
+          );
         } catch (err: unknown) {
           const msg = err instanceof Error ? err.message : 'Unknown error';
           this.logger.error(

@@ -28,10 +28,12 @@ import { RateLimitGuard } from '../common/guards/rate-limit.guard';
         if (!secret) {
           throw new Error('JWT_SECRET is required');
         }
+        const expiresIn = (configService.get<string>('JWT_EXPIRES_IN') ||
+          '15m') as `${number}m` | `${number}d` | `${number}s` | `${number}h`;
         return {
           secret,
           signOptions: {
-            expiresIn: (configService.get<string>('JWT_EXPIRES_IN') || '15m') as any,
+            expiresIn,
           },
         };
       },

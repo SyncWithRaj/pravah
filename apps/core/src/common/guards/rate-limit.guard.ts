@@ -70,13 +70,18 @@ export class RateLimitGuard
         context.getClass(),
       ]) ?? 60;
 
-    const request = context.switchToHttp().getRequest();
+    const request = context.switchToHttp().getRequest<{
+      ip?: string;
+      socket?: { remoteAddress?: string };
+      url?: string;
+    }>();
     let clientIp: string =
       request.ip || request.socket?.remoteAddress || 'unknown';
     if (clientIp.startsWith('::ffff:')) {
       clientIp = clientIp.substring(7);
     }
-    const route = request.route?.path || request.url?.split('?')[0] || 'unknown';
+    const route =
+      typeof request.url === 'string' ? request.url.split('?')[0] : 'unknown';
     const key = `ratelimit:${route}:${clientIp}`;
 
     let currentCount = 1;

@@ -23,7 +23,8 @@ import { getKafkaSaslConfig } from './kafka.config';
               client: {
                 clientId: 'pravah-core',
                 brokers: [
-                  configService.get<string>('KAFKA_BROKERS') || 'localhost:19092',
+                  configService.get<string>('KAFKA_BROKERS') ||
+                    'localhost:19092',
                 ],
                 ...(sasl ? { sasl } : {}),
               },

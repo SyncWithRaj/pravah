@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Role } from '@prisma/client';
-import * as crypto from 'crypto';
 import { Request } from 'express';
 import { verifyServiceSignature } from '../../common/security/service-hmac.util';
 
@@ -67,7 +66,9 @@ export class InterServiceGuard implements CanActivate {
 
     const secret = this.configService.get<string>('INTERNAL_SERVICE_SECRET');
     if (!secret) {
-      throw new UnauthorizedException('INTERNAL_SERVICE_SECRET is not configured');
+      throw new UnauthorizedException(
+        'INTERNAL_SERVICE_SECRET is not configured',
+      );
     }
 
     const method = request.method.toUpperCase();

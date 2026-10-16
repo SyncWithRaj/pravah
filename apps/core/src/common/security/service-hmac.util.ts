@@ -33,7 +33,13 @@ export function signServiceRequest(
   'x-service-timestamp': string;
   'x-service-signature': string;
 } {
-  const payload = buildServiceHmacPayload(serviceId, method, url, timestamp, body);
+  const payload = buildServiceHmacPayload(
+    serviceId,
+    method,
+    url,
+    timestamp,
+    body,
+  );
   const signature = crypto
     .createHmac('sha256', secret)
     .update(payload)
@@ -59,7 +65,13 @@ export function verifyServiceSignature(
   const now = Date.now();
   if (Math.abs(now - timestamp) > maxClockDriftMs) return false;
 
-  const payload = buildServiceHmacPayload(serviceId, method, url, timestamp, body);
+  const payload = buildServiceHmacPayload(
+    serviceId,
+    method,
+    url,
+    timestamp,
+    body,
+  );
   const expectedSignature = crypto
     .createHmac('sha256', secret)
     .update(payload)

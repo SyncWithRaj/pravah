@@ -108,7 +108,11 @@ describe('TranscodingService', () => {
       });
       mockPrisma.videoTranscode.findMany.mockResolvedValue(records);
 
-      const result = await service.getTranscodeStatus('user-1', Role.USER, 'file-1');
+      const result = await service.getTranscodeStatus(
+        'user-1',
+        Role.USER,
+        'file-1',
+      );
       expect(result).toEqual(records);
       expect(mockPrisma.videoTranscode.findMany).toHaveBeenCalledWith({
         where: { fileId: 'file-1' },

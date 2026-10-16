@@ -134,9 +134,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
             REFRESH_TOKEN_TTL_SECONDS,
           );
           pipe.sadd(`auth:refreshfamily:${familyId}`, jti);
-          pipe.expire(`auth:refreshfamily:${familyId}`, REFRESH_TOKEN_TTL_SECONDS);
+          pipe.expire(
+            `auth:refreshfamily:${familyId}`,
+            REFRESH_TOKEN_TTL_SECONDS,
+          );
           pipe.sadd(`auth:refresh:user:${user.id}`, jti);
-          pipe.expire(`auth:refresh:user:${user.id}`, REFRESH_TOKEN_TTL_SECONDS);
+          pipe.expire(
+            `auth:refresh:user:${user.id}`,
+            REFRESH_TOKEN_TTL_SECONDS,
+          );
           await pipe.exec();
         } else {
           await this.redis.set(
@@ -192,7 +198,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
       // Redis is required for the refresh path: fail closed if unavailable
       if (!this.redis) {
-        this.logger.error('Redis connection unavailable for refresh token verification');
+        this.logger.error(
+          'Redis connection unavailable for refresh token verification',
+        );
         throw new UnauthorizedException('Authentication service unavailable');
       }
 
@@ -217,14 +225,21 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
 
       // 2. Token was never issued, or was already purged
       if (!tokenState) {
-        throw new UnauthorizedException('Refresh token has been revoked or reused');
+        throw new UnauthorizedException(
+          'Refresh token has been revoked or reused',
+        );
       }
 
-      const familyId = tokenState === 'active' ? crypto.randomUUID() : tokenState;
+      const familyId =
+        tokenState === 'active' ? crypto.randomUUID() : tokenState;
 
       const accessPayload = { sub: user.id, email: user.email };
       const newJti = crypto.randomUUID();
-      const newRefreshPayload = { sub: user.id, email: user.email, jti: newJti };
+      const newRefreshPayload = {
+        sub: user.id,
+        email: user.email,
+        jti: newJti,
+      };
 
       const [new_access_token, new_refresh_token] = await Promise.all([
         this.jwtService.signAsync(accessPayload, {
@@ -257,9 +272,15 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
             REFRESH_TOKEN_TTL_SECONDS,
           );
           pipe.sadd(`auth:refreshfamily:${familyId}`, newJti);
-          pipe.expire(`auth:refreshfamily:${familyId}`, REFRESH_TOKEN_TTL_SECONDS);
+          pipe.expire(
+            `auth:refreshfamily:${familyId}`,
+            REFRESH_TOKEN_TTL_SECONDS,
+          );
           pipe.sadd(`auth:refresh:user:${user.id}`, newJti);
-          pipe.expire(`auth:refresh:user:${user.id}`, REFRESH_TOKEN_TTL_SECONDS);
+          pipe.expire(
+            `auth:refresh:user:${user.id}`,
+            REFRESH_TOKEN_TTL_SECONDS,
+          );
           await pipe.exec();
         } else {
           await this.redis.set(
@@ -336,7 +357,9 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Redis failure';
-      this.logger.error(`Failed to revoke all user tokens for ${userId}: ${msg}`);
+      this.logger.error(
+        `Failed to revoke all user tokens for ${userId}: ${msg}`,
+      );
     }
   }
 }

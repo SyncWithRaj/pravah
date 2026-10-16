@@ -43,10 +43,10 @@ export CORE_PUBLIC_IP="$PUBLIC_IP"
 
 # Generate production .env from example or defaults
 if [ ! -f .env ]; then
-    DB_PASS="${POSTGRES_PASSWORD:-$(openssl rand -hex 16)}"
-    MINIO_PASS="${MINIO_ROOT_PASSWORD:-$(openssl rand -hex 16)}"
-    JWT_SEC="${JWT_SECRET:-$(openssl rand -hex 32)}"
-    INTERNAL_SEC="${INTERNAL_SERVICE_SECRET:-$(openssl rand -hex 32)}"
+    DB_PASS="$${POSTGRES_PASSWORD:-$$(openssl rand -hex 16)}"
+    MINIO_PASS="$${MINIO_ROOT_PASSWORD:-$$(openssl rand -hex 16)}"
+    JWT_SEC="$${JWT_SECRET:-$$(openssl rand -hex 32)}"
+    INTERNAL_SEC="$${INTERNAL_SERVICE_SECRET:-$$(openssl rand -hex 32)}"
     cat <<EOF > .env
 PORT=3000
 DATABASE_URL=postgresql://admin_postgres:$${DB_PASS}@postgres:5432/pravah_db?schema=public

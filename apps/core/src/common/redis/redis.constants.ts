@@ -5,7 +5,9 @@
 export const REDIS_PASSWORD = (): string => {
   const password = process.env.REDIS_PASSWORD;
   if (!password && process.env.NODE_ENV === 'production') {
-    throw new Error('REDIS_PASSWORD is required in production environment. Boot halted.');
+    throw new Error(
+      'REDIS_PASSWORD is required in production environment. Boot halted.',
+    );
   }
   return password ?? '';
 };

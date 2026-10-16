@@ -13,7 +13,7 @@ import { Role } from '@prisma/client';
 export class CreateApiKeyDto {
   @IsString()
   @Length(1, 100)
-  @Matches(/^[a-zA-Z0-9_\-\.\s]+$/, {
+  @Matches(/^[a-zA-Z0-9_\-.\s]+$/, {
     message:
       'Name can only contain alphanumeric characters, spaces, dots, hyphens, and underscores',
   })

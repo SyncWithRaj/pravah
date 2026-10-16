@@ -3,7 +3,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DlqController } from './dlq.controller';
 import { ReplicationService, SafeFailedJob } from './replication.service';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
-import { ReplicationJobStatus, EdgeNodeStatus, FileStatus } from '@prisma/client';
+import {
+  ReplicationJobStatus,
+  EdgeNodeStatus,
+  FileStatus,
+} from '@prisma/client';
 import { UnifiedAuthGuard, RolesGuard } from '../auth';
 
 describe('DlqController', () => {

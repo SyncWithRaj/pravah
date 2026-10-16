@@ -86,7 +86,7 @@ export class EdgeContentController {
       (typeof req.headers.authorization === 'string'
         ? req.headers.authorization.replace(/^Bearer\s+/i, '')
         : null) ||
-      (typeof req.query.token === 'string' ? (req.query.token as string) : null);
+      (typeof req.query.token === 'string' ? req.query.token : null);
 
     if (rawToken) {
       const jwtSecret = this.configService.get<string>('JWT_SECRET');

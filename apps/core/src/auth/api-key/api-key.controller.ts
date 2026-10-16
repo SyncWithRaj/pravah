@@ -26,7 +26,7 @@ export class ApiKeyController {
     @Body() dto: CreateApiKeyDto,
   ) {
     const role =
-      req.user.role === Role.ADMIN ? (dto.role || Role.USER) : req.user.role;
+      req.user.role === Role.ADMIN ? dto.role || Role.USER : req.user.role;
     return this.apiKeyService.createApiKey(req.user.id, { ...dto, role });
   }
 

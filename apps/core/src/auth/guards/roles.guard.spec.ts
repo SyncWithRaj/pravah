@@ -107,7 +107,10 @@ describe('RolesGuard', () => {
       .spyOn(reflector, 'getAllAndOverride')
       .mockReturnValue([Role.ADMIN, Role.INTERNAL]);
     const adminCtx = createMockContext({ id: 'u1', role: Role.ADMIN });
-    const internalCtx = createMockContext({ id: 'edge-1', role: Role.INTERNAL });
+    const internalCtx = createMockContext({
+      id: 'edge-1',
+      role: Role.INTERNAL,
+    });
     expect(guard.canActivate(adminCtx)).toBe(true);
     expect(guard.canActivate(internalCtx)).toBe(true);
   });

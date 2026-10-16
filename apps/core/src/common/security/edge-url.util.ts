@@ -65,7 +65,8 @@ export function verifyEdgeUrl(
     return false;
   }
 
-  const exp = typeof expStr === 'number' ? expStr : parseInt(String(expStr), 10);
+  const exp =
+    typeof expStr === 'number' ? expStr : parseInt(String(expStr), 10);
   if (isNaN(exp)) {
     return false;
   }

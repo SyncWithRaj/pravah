@@ -42,14 +42,19 @@ export class TelemetryGateway
 
   async handleConnection(client: Socket) {
     try {
-      const rawToken =
-        client.handshake.auth?.token ||
-        (typeof client.handshake.headers['authorization'] === 'string'
+      const authObj = client.handshake.auth as
+        Record<string, unknown> | undefined;
+      const authToken =
+        typeof authObj?.token === 'string' ? authObj.token : null;
+      const authHeader =
+        typeof client.handshake.headers['authorization'] === 'string'
           ? client.handshake.headers['authorization'].replace(/^Bearer\s+/i, '')
-          : null) ||
-        (typeof client.handshake.query?.token === 'string'
+          : null;
+      const queryToken =
+        typeof client.handshake.query?.token === 'string'
           ? client.handshake.query.token
-          : null);
+          : null;
+      const rawToken = authToken || authHeader || queryToken;
 
       if (!rawToken) {
         this.logger.warn(
@@ -79,10 +84,11 @@ export class TelemetryGateway
         return;
       }
 
-      client.data.userId = user.id;
-      client.data.role = user.role;
-      client.join(`user:${user.id}`);
-      client.join(`role:${user.role}`);
+      const clientData = client.data as { userId?: string; role?: Role };
+      clientData.userId = user.id;
+      clientData.role = user.role;
+      await client.join(`user:${user.id}`);
+      await client.join(`role:${user.role}`);
 
       this.logger.log(
         `Client authenticated on Telemetry WebSocket: ${client.id} (user: ${user.id}, role: ${user.role})`,
@@ -288,4 +294,3 @@ export class TelemetryGateway
     this.emitToAdminsAndStreamers('replication.repaired', data);
   }
 }
-
