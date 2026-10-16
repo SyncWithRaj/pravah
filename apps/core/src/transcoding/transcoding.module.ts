@@ -10,6 +10,8 @@ import { MinioModule } from '../common/minio/minio.module';
 import { AuthModule } from '../auth/auth.module';
 import { TRANSCODE_QUEUE_NAME } from './transcoding.constants';
 
+import { REDIS_PASSWORD } from '../common/redis/redis.constants';
+
 @Module({
   imports: [
     ConfigModule,
@@ -21,12 +23,17 @@ import { TRANSCODE_QUEUE_NAME } from './transcoding.constants';
     BullModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        connection: {
-          host: configService.get<string>('REDIS_HOST') || 'localhost',
-          port: configService.get<number>('REDIS_PORT') || 6379,
-        },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const password =
+          configService.get<string>('REDIS_PASSWORD') || REDIS_PASSWORD();
+        return {
+          connection: {
+            host: configService.get<string>('REDIS_HOST') || 'localhost',
+            port: configService.get<number>('REDIS_PORT') || 6379,
+            ...(password ? { password } : {}),
+          },
+        };
+      },
     }),
 
     BullModule.registerQueue({
