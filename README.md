@@ -14,6 +14,9 @@ Control plane for metadata, ingestion and orchestration. Data plane at the edge 
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
 ![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![Redpanda](https://img.shields.io/badge/Redpanda-Kafka_SASL-FF5722?logo=apachekafka&logoColor=white)
+![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-Tracing-425CC7?logo=opentelemetry&logoColor=white)
+![Terraform](https://img.shields.io/badge/Terraform-AWS_Multi--Region-844FBA?logo=terraform&logoColor=white)
 
 [Overview](#overview) · [Architecture](#architecture) · [Quick Start](#quick-start) · [API](#api-reference) · [Deployment](#deployment) · [Security](#security)
 
@@ -639,6 +642,14 @@ Refresh tokens carry a `jti` and belong to a **token family**. On rotation the o
 4. FFmpeg emits 4-second MPEG-TS segments plus per-quality playlists.
 5. A `master.m3u8` is written at the top level.
 6. Every artefact is uploaded to MinIO under `hls/{ownerId}/{fileId}/{versionId}/`.
+
+> **Testing playback:** request a signed URL from `GET /api/v1/download/:fileId`, then reuse its `exp` and `sig` on the HLS route:
+>
+> ```
+> http://localhost:8000/edge/content/<fileId>/hls/master.m3u8?v=<version>&exp=<exp>&sig=<sig>
+> ```
+>
+> Open that URL in **Safari** (native HLS), **VLC**, or the [hls.js demo player](https://hls-js.netlify.app/demo/). The edge rewrites every variant and segment URI with a fresh signature, so adaptive bitrate switching can be observed live in the player's quality selector.
 
 ### Consistent hashing and placement
 
