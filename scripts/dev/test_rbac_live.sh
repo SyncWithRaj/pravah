@@ -5,6 +5,7 @@
 # ============================================================
 
 BASE="http://localhost:3000/api/v1"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 PASS=0
 FAIL=0
 TOTAL=0
@@ -87,9 +88,9 @@ fi
 echo -e "  ${GREEN}✅ All 3 users registered, roles assigned, and JWT tokens obtained${NC}\n"
 
 # ============================================================
-# PHASE 2: Test Admin-Only Endpoints (/admin/dlq, /admin/health)
+# PHASE 2: Test Admin-Only & Role-Scoped Endpoints (/admin/dlq, /admin/health)
 # ============================================================
-echo -e "${YELLOW}🅰️  Phase 2: Admin-Only Endpoints (/admin/dlq, /admin/health)${NC}"
+echo -e "${YELLOW}🅰️  Phase 2: Admin-Only & Role-Scoped Endpoints (/admin/dlq, /admin/health)${NC}"
 
 # Test 1: ADMIN accessing /admin/dlq → 200
 STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/admin/dlq" \
@@ -115,10 +116,10 @@ STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/admin/health/nodes" \
   -H "Authorization: Bearer $ADMIN_JWT")
 assert_status "ADMIN via JWT → GET /admin/health/nodes" "200" "$STATUS"
 
-# Test 6: VIEWER accessing /admin/health/nodes → 403
+# Test 6: VIEWER accessing /admin/health/nodes → 200 (VIEWER inherits USER)
 STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/admin/health/nodes" \
   -H "Authorization: Bearer $VIEWER_JWT")
-assert_status "VIEWER via JWT → GET /admin/health/nodes (insufficient role)" "403" "$STATUS"
+assert_status "VIEWER via JWT → GET /admin/health/nodes (USER role inherited)" "200" "$STATUS"
 
 echo ""
 
@@ -169,6 +170,115 @@ STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/admin/transcoding/status/
   -H "Authorization: Bearer $VIEWER_JWT")
 assert_status "VIEWER via JWT → GET /admin/transcoding/status (insufficient role)" "403" "$STATUS"
 
+echo ""
+
+# ============================================================
+# PHASE 3.5: Uploaded File Ownership / BOLA Regression Checks
+# ============================================================
+echo -e "${YELLOW}🧱 Phase 3.5: Uploaded File Ownership (BOLA Regression)${NC}"
+
+BOLA_PAYLOAD=$(mktemp)
+printf 'pravah-rbac-bola-payload-%s' "$(date +%s)" > "$BOLA_PAYLOAD"
+BOLA_SIZE=$(wc -c < "$BOLA_PAYLOAD" | tr -d ' ')
+BOLA_HASH=$(sha256sum "$BOLA_PAYLOAD" | awk '{print $1}')
+
+BOLA_INIT=$(curl -s -X POST "$BASE/upload/init" \
+  -H "Authorization: Bearer $STREAMER_JWT" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\":\"rbac-bola-test.bin\",\"mimeType\":\"application/octet-stream\",\"totalSize\":${BOLA_SIZE},\"totalChunks\":1,\"fullFileChecksum\":\"${BOLA_HASH}\"}")
+BOLA_FILE_ID=$(echo "$BOLA_INIT" | grep -o '"fileId":"[^"]*"' | cut -d'"' -f4)
+
+if [ -z "$BOLA_FILE_ID" ]; then
+  TOTAL=$((TOTAL + 1))
+  FAIL=$((FAIL + 1))
+  echo -e "  ${RED}❌ FAIL${NC} STREAMER could not initialize the BOLA test upload"
+else
+  BOLA_CHUNK_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PUT \
+    "$BASE/upload/$BOLA_FILE_ID/chunk/0" \
+    -H "Authorization: Bearer $STREAMER_JWT" \
+    -F "checksum=$BOLA_HASH" \
+    -F "file=@$BOLA_PAYLOAD")
+  assert_status "STREAMER uploads the BOLA test chunk" "200" "$BOLA_CHUNK_STATUS"
+
+  BOLA_COMPLETE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+    "$BASE/upload/complete" \
+    -H "Authorization: Bearer $STREAMER_JWT" \
+    -H "Content-Type: application/json" \
+    -d "{\"fileId\":\"$BOLA_FILE_ID\"}")
+  assert_status "STREAMER completes the BOLA test upload" "201" "$BOLA_COMPLETE_STATUS"
+
+  if [ "$BOLA_COMPLETE_STATUS" = "201" ]; then
+    # Test 13a: owner can download the current version
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/download/$BOLA_FILE_ID" \
+      -H "Authorization: Bearer $STREAMER_JWT")
+    assert_status "OWNER via JWT → GET /download/:fileId (current version)" "200" "$STATUS"
+
+    # Test 13b: non-owner and admin cannot download the current version
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/download/$BOLA_FILE_ID" \
+      -H "Authorization: Bearer $VIEWER_JWT")
+    assert_status "VIEWER via JWT → GET /download/:fileId (current version BOLA)" "403" "$STATUS"
+
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/download/$BOLA_FILE_ID" \
+      -H "Authorization: Bearer $ADMIN_JWT")
+    assert_status "ADMIN via JWT → GET /download/:fileId (owner-only)" "403" "$STATUS"
+
+    # Test 13c: versioned downloads must authorize before geo-routing
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+      "$BASE/download/$BOLA_FILE_ID/versions/1" \
+      -H "Authorization: Bearer $VIEWER_JWT" \
+      -H "x-test-client-region: ap-south-1")
+    assert_status "VIEWER via JWT → GET /download/:fileId/versions/1 (pre-routing BOLA)" "403" "$STATUS"
+
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+      "$BASE/download/$BOLA_FILE_ID/versions/1" \
+      -H "Authorization: Bearer $ADMIN_JWT" \
+      -H "x-test-client-region: ap-south-1")
+    assert_status "ADMIN via JWT → GET /download/:fileId/versions/1 (owner-only)" "403" "$STATUS"
+
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+      "$BASE/download/$BOLA_FILE_ID/versions/1" \
+      -H "Authorization: Bearer $STREAMER_JWT")
+    assert_status "OWNER via JWT → GET /download/:fileId/versions/1" "200" "$STATUS"
+
+    # Test 13d: core edge-content JWT path checks ownership, but allows DB admins
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+      "$BASE/edge/content/$BOLA_FILE_ID?v=1" \
+      -H "Authorization: Bearer $STREAMER_JWT")
+    assert_status "OWNER via JWT → GET /edge/content/:fileId" "200" "$STATUS"
+
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+      "$BASE/edge/content/$BOLA_FILE_ID?v=1" \
+      -H "Authorization: Bearer $VIEWER_JWT")
+    assert_status "VIEWER via JWT → GET /edge/content/:fileId (BOLA)" "403" "$STATUS"
+
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+      "$BASE/edge/content/$BOLA_FILE_ID?v=1" \
+      -H "Authorization: Bearer $ADMIN_JWT")
+    assert_status "ADMIN via JWT → GET /edge/content/:fileId (DB role admin)" "200" "$STATUS"
+
+    # Test 13e: delete is owner-only
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+      "$BASE/metadata/files/$BOLA_FILE_ID" \
+      -H "Authorization: Bearer $VIEWER_JWT")
+    assert_status "VIEWER via JWT → DELETE /metadata/files/:fileId (BOLA)" "403" "$STATUS"
+
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+      "$BASE/metadata/files/$BOLA_FILE_ID" \
+      -H "Authorization: Bearer $ADMIN_JWT")
+    assert_status "ADMIN via JWT → DELETE /metadata/files/:fileId (owner-only)" "403" "$STATUS"
+
+    STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+      "$BASE/metadata/files/$BOLA_FILE_ID" \
+      -H "Authorization: Bearer $STREAMER_JWT")
+    assert_status "OWNER via JWT → DELETE /metadata/files/:fileId" "200" "$STATUS"
+  else
+    # Best-effort cleanup if completion failed.
+    curl -s -o /dev/null -X DELETE "$BASE/metadata/files/$BOLA_FILE_ID" \
+      -H "Authorization: Bearer $STREAMER_JWT" || true
+  fi
+fi
+
+rm -f "$BOLA_PAYLOAD"
 echo ""
 
 # ============================================================
@@ -223,11 +333,19 @@ echo ""
 echo -e "${YELLOW}🔒 Phase 5: Inter-Service HMAC Signature & Anti-Replay${NC}"
 
 SECRET="pravah-internal-microservice-super-secret-2026"
+if [ -f "$ROOT_DIR/.env" ]; then
+  ENV_SECRET=$(grep -E '^INTERNAL_SERVICE_SECRET=' "$ROOT_DIR/.env" | tail -n1 | cut -d= -f2- | tr -d '"' | tr -d "'" | tr -d '\r')
+  if [ -n "$ENV_SECRET" ]; then
+    SECRET="$ENV_SECRET"
+  fi
+fi
 SERVICE_ID="edge-node-01"
 TIMESTAMP=$(node -e 'console.log(Date.now())')
 METHOD="GET"
 PATH_URI="/api/v1/admin/health/nodes"
-PAYLOAD="${SERVICE_ID}:${METHOD}:${PATH_URI}:${TIMESTAMP}"
+# The HMAC binds the body hash even when the request has no body.
+BODY_HASH=$(printf '{}' | openssl dgst -sha256 | awk '{print $2}')
+PAYLOAD="${SERVICE_ID}:${METHOD}:${PATH_URI}:${TIMESTAMP}:${BODY_HASH}"
 VALID_SIG=$(echo -n "$PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')
 
 # Test 18: Valid HMAC Signature + Timestamp → 200
@@ -246,7 +364,7 @@ assert_status "TAMPERED HMAC Signature → GET /admin/health/nodes (unauthorized
 
 # Test 20: Replay Attack (Timestamp 10 minutes in past) → 401
 STALE_TIMESTAMP=$(( $(node -e 'console.log(Date.now())') - 600000 ))
-STALE_PAYLOAD="${SERVICE_ID}:${METHOD}:${PATH_URI}:${STALE_TIMESTAMP}"
+STALE_PAYLOAD="${SERVICE_ID}:${METHOD}:${PATH_URI}:${STALE_TIMESTAMP}:${BODY_HASH}"
 STALE_SIG=$(echo -n "$STALE_PAYLOAD" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $2}')
 
 STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/admin/health/nodes" \
