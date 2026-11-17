@@ -114,9 +114,12 @@ services:
 
   # 4. MinIO (S3 Compatible Distributed Object Storage)
   minio:
-    image: pravah-minio:latest
+    image: cgr.dev/chainguard/minio:latest
     container_name: pravah-minio
     restart: always
+    # The named volume is created root-owned; Chainguard's image runs as UID 65532.
+    # Run as root locally so MinIO can initialize the backend.
+    user: "0:0"
     command: server /data --console-address ":9001"
     ports:
       - "9000:9000"

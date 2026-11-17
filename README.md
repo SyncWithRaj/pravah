@@ -70,9 +70,9 @@ flowchart TB
         DASH["Operations Dashboard"]
     end
 
-    subgraph Core["Control Plane — apps/core (NestJS + Express)"]
+    subgraph Core["Control Plane - apps/core - NestJS + Express"]
         API["REST API /api/v1"]
-        GUARD["UnifiedAuthGuard<br/>JWT · API Key · HMAC"]
+        GUARD["UnifiedAuthGuard - JWT, API Key, HMAC"]
         UPLOAD["Upload Service"]
         ROUTE["Routing Service"]
         PLACE["Placement Service"]
@@ -81,7 +81,7 @@ flowchart TB
         HEALTH["Health Monitor"]
     end
 
-    subgraph Edge["Data Plane — apps/edge (NestJS + Fastify)"]
+    subgraph Edge["Data Plane - apps/edge - NestJS + Fastify"]
         E1["Edge ap-south-1"]
         E2["Edge us-east-1"]
         E3["Edge eu-central-1"]
@@ -160,7 +160,7 @@ sequenceDiagram
     end
 
     C->>Core: POST /upload/complete
-    Core->>PG: Atomic claim PENDING/UPLOADING → ASSEMBLING
+    Core->>PG: Atomic claim PENDING/UPLOADING to ASSEMBLING
     Note over Core,PG: updateMany guard makes concurrent completes return 409
     Core->>MO: S3 multipart copy (server-side assembly)
     Core->>PG: Create FileVersion, set currentVersionId
@@ -191,7 +191,7 @@ sequenceDiagram
     R-->>Core: edge + distance
     Core-->>C: 302 + HMAC-signed URL (120 s)
 
-    C->>E: GET /edge/content/:fileId?v=n&exp&sig
+    C->>E: GET /edge/content/:fileId?v=n,exp,sig
     E->>E: Verify signature and expiry
     E->>Cache: Lookup metadata + bytes
 
@@ -243,7 +243,7 @@ sequenceDiagram
     E-->>Q: Success
     Q->>PG: status = COMPLETE
 
-    Note over Q,PG: After 3 failed attempts → DLQ row + admin replay API
+    Note over Q,PG: After 3 failed attempts, DLQ row + admin replay API
 ```
 
 ---
