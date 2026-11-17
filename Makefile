@@ -1,4 +1,4 @@
-.PHONY: help dev stop restart ui seed migrate logs logs-core logs-edge clean build build-all build\:all lint format deploy-core deploy-edge
+.PHONY: help start dev stop restart ui seed migrate logs logs-core logs-edge clean build build-all build\:all lint format deploy-core deploy-edge
 
 
 # Default target
@@ -7,6 +7,7 @@ help:
 	@echo "Pravah CDN - Development & Operations Command Center"
 	@echo "=========================================================="
 	@echo "Local Development:"
+	@echo "  make start        - One-shot bootstrap: deps, env, docker, migrations, seed & health check"
 	@echo "  make dev          - Start all local containers (Core, Edge, PLG Observability)"
 	@echo "  make stop         - Stop all running containers"
 	@echo "  make restart      - Restart all running containers"
@@ -30,6 +31,9 @@ help:
 	@echo "  make deploy-core  - Deploy Central Core Stack on AWS Mumbai EC2"
 	@echo "  make deploy-edge  - Deploy Edge Node Stack on AWS Edge EC2"
 	@echo "=========================================================="
+
+start:
+	bash scripts/start-local.sh
 
 dev:
 	docker compose up -d --build
