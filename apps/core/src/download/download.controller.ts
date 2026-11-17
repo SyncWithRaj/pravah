@@ -145,6 +145,14 @@ export class DownloadController {
     @Req() req: Request,
     @Res() res: Response,
   ) {
+    // Authorize before routing: the redirect path signs an edge URL and never
+    // reaches processDownload(), which is where the ownership check used to live.
+    await this.downloadService.assertVersionAccess(
+      user.id,
+      fileId,
+      versionNumber,
+    );
+
     const rangeHeader = req.headers.range;
     const ifNoneMatch = req.headers['if-none-match'];
     const clientRegion = req.headers['x-test-client-region'] as string;

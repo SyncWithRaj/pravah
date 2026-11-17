@@ -80,6 +80,30 @@ export class DownloadService {
     return file.currentVersion.versionNumber;
   }
 
+  /**
+   * Verifies that the caller owns the file before a version is routed or served.
+   * The redirect path signs an edge URL before any stream is opened, so it must
+   * not rely on the ownership check inside processDownload().
+   */
+  async assertVersionAccess(
+    userId: string,
+    fileId: string,
+    versionNumber: number,
+  ): Promise<void> {
+    const version = await this.prisma.fileVersion.findUnique({
+      where: { fileId_versionNumber: { fileId, versionNumber } },
+      include: { file: { select: { ownerId: true } } },
+    });
+
+    if (!version) {
+      throw new NotFoundException(`Version ${versionNumber} not found`);
+    }
+
+    if (version.file.ownerId !== userId) {
+      throw new ForbiddenException('Access denied');
+    }
+  }
+
   // RAM/Cache mein pade hue raw file data (Buffer) ko HTTP response ke liye ready karna (Full stream or partial stream)
   private formatCacheHit(
     cachedBinary: Buffer,

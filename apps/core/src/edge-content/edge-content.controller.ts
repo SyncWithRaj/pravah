@@ -9,6 +9,7 @@ import {
   NotFoundException,
   InternalServerErrorException,
   UnauthorizedException,
+  ForbiddenException,
   ParseIntPipe,
 } from '@nestjs/common';
 import { Response, Request } from 'express';
@@ -21,6 +22,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { verifyEdgeUrl } from '../common/security/edge-url.util';
 import { verifyServiceSignature } from '../common/security/service-hmac.util';
 import * as crypto from 'crypto';
+import { Role } from '@prisma/client';
+
+type EdgeAuthContext =
+  { mode: 'signed' } | { mode: 'service' } | { mode: 'jwt'; userId: string };
 
 @Controller('edge/content')
 export class EdgeContentController {
@@ -38,7 +43,7 @@ export class EdgeContentController {
     req: Request,
     fileId: string,
     versionStr: string,
-  ): Promise<boolean> {
+  ): Promise<EdgeAuthContext | null> {
     // 1. Edge signed URL verification (?exp=...&sig=...)
     const expQuery = req.query.exp as string | undefined;
     const sigQuery = req.query.sig as string | undefined;
@@ -52,7 +57,7 @@ export class EdgeContentController {
       sigQuery &&
       verifyEdgeUrl(fileId, versionStr, expQuery, sigQuery, signingSecret)
     ) {
-      return true;
+      return { mode: 'signed' };
     }
 
     // 2. Inter-service HMAC headers (x-service-*)
@@ -77,7 +82,7 @@ export class EdgeContentController {
           req.body,
         )
       ) {
-        return true;
+        return { mode: 'service' };
       }
     }
 
@@ -91,19 +96,55 @@ export class EdgeContentController {
     if (rawToken) {
       const jwtSecret = this.configService.get<string>('JWT_SECRET');
       try {
-        const payload = await this.jwtService.verifyAsync<{
-          sub: string;
-          role?: string;
-        }>(rawToken, { secret: jwtSecret });
+        const payload = await this.jwtService.verifyAsync<{ sub: string }>(
+          rawToken,
+          { secret: jwtSecret },
+        );
         if (payload?.sub) {
-          return true;
+          return { mode: 'jwt', userId: payload.sub };
         }
       } catch {
         // Token invalid
       }
     }
 
-    return false;
+    return null;
+  }
+
+  /**
+   * Signed URLs and inter-service HMAC calls are already scoped by the issuer.
+   * A user JWT only proves identity, so it must also own the file.
+   */
+  private async assertFileAccess(
+    auth: EdgeAuthContext,
+    fileId: string,
+  ): Promise<void> {
+    if (auth.mode !== 'jwt') {
+      return;
+    }
+
+    const file = await this.prisma.file.findUnique({
+      where: { id: fileId },
+      select: { ownerId: true },
+    });
+
+    if (!file) {
+      throw new NotFoundException('File not found');
+    }
+
+    if (file.ownerId === auth.userId) {
+      return;
+    }
+
+    // Access tokens carry only sub/email; the role is authoritative in the DB.
+    const user = await this.prisma.user.findUnique({
+      where: { id: auth.userId },
+      select: { role: true },
+    });
+
+    if (user?.role !== Role.ADMIN) {
+      throw new ForbiddenException('Access denied');
+    }
   }
 
   @Get(':fileId/hls/*')
@@ -116,10 +157,11 @@ export class EdgeContentController {
     const versionNum = versionQuery ? parseInt(versionQuery, 10) : 1;
     const versionStr = versionNum.toString();
 
-    const isAuthed = await this.authenticateRequest(req, fileId, versionStr);
-    if (!isAuthed) {
+    const auth = await this.authenticateRequest(req, fileId, versionStr);
+    if (!auth) {
       throw new UnauthorizedException('Authentication required');
     }
+    await this.assertFileAccess(auth, fileId);
 
     const urlParts = req.url.split('/hls/');
     const rawSubpath = urlParts[1]?.split('?')[0] || 'master.m3u8';
@@ -226,10 +268,11 @@ export class EdgeContentController {
 
     const versionStr = version.toString();
 
-    const isAuthed = await this.authenticateRequest(req, fileId, versionStr);
-    if (!isAuthed) {
+    const auth = await this.authenticateRequest(req, fileId, versionStr);
+    if (!auth) {
       throw new UnauthorizedException('Authentication required');
     }
+    await this.assertFileAccess(auth, fileId);
 
     const buffer = await this.cacheManagerService.getBinary(
       fileId,
