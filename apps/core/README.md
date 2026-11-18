@@ -44,12 +44,12 @@ The Core service (`apps/core`) is the central control plane, origin coordinator,
 ## Core Subsystems and Architecture
 
 ### 1. Tri-Mode Cryptographic Authentication and RBAC
-The Control Plane provides three orthogonal authentication mechanisms managed through [`UnifiedAuthGuard`](file:///home/raj-ribadiya/Desktop/pravah/apps/core/src/auth/guards/unified-auth.guard.ts):
+The Control Plane provides three orthogonal authentication mechanisms managed through [`UnifiedAuthGuard`](src/auth/guards/unified-auth.guard.ts):
 
 * **JSON Web Tokens (JWT):** Designed for end-user web and mobile sessions. Employs asymmetric or shared secret signing with short-lived access tokens (15 minutes) and rotating refresh tokens stored in PostgreSQL. Passwords are encrypted using Argon2 hashing algorithms (`argon2id`).
 * **Cryptographic API Keys:** Optimized for machine-to-machine, CI/CD automation, and external edge proxies. API keys are generated with high entropy (`prv_live_...`), stored exclusively as SHA-256 digests in the `api_keys` table, and evaluated using constant-time buffer comparisons (`crypto.timingSafeEqual`) to mitigate side-channel timing attacks.
 * **Inter-Service HMAC-SHA256 Signatures:** Secures internal service-to-service communication between Edge nodes and Core origin. Requests must include `x-service-id`, `x-service-timestamp`, and `x-service-signature`. Signatures are generated over the payload string `${edgeId}:${method}:${path}:${timestamp}` using a pre-shared cryptographic key (`INTERNAL_SERVICE_SECRET`). Signatures include strict replay protection rejecting requests with clock drift exceeding 5 minutes.
-* **Hierarchical Role-Based Access Control (RBAC):** Configured via `@Roles()` decorators and enforced at the controller layer via [`RolesGuard`](file:///home/raj-ribadiya/Desktop/pravah/apps/core/src/auth/guards/roles.guard.ts):
+* **Hierarchical Role-Based Access Control (RBAC):** Configured via `@Roles()` decorators and enforced at the controller layer via [`RolesGuard`](src/auth/guards/roles.guard.ts):
   ```
   ADMIN (Level 4) ──► STREAMER (Level 3) ──► VIEWER (Level 2) ──► USER (Level 1)
   ```
@@ -58,7 +58,7 @@ The Control Plane provides three orthogonal authentication mechanisms managed th
 ---
 
 ### 2. Resumable Multipart Chunked Upload Engine
-The ingestion pipeline ([`UploadService`](file:///home/raj-ribadiya/Desktop/pravah/apps/core/src/upload/upload.service.ts)) handles multi-gigabyte binary files split into uniform 5MB chunks:
+The ingestion pipeline ([`UploadService`](src/upload/upload.service.ts)) handles multi-gigabyte binary files split into uniform 5MB chunks:
 
 1. **Session Initialization (`POST /api/v1/upload/init`):** Allocates a `File` record in `PENDING` state and provisions `FileChunk` slots in PostgreSQL.
 2. **Chunk Ingestion (`PUT /api/v1/upload/:id/chunk/:index`):** Clients stream binary chunks sequentially or concurrently. Each chunk is temporarily written to the MinIO origin bucket (`{fileId}/chunks/chunk-{index}`) and validated against a client-supplied SHA-256 checksum. Chunks transition from `PENDING` to `UPLOADED` to `VERIFIED`.
@@ -70,7 +70,7 @@ The ingestion pipeline ([`UploadService`](file:///home/raj-ribadiya/Desktop/prav
 ### 3. Adaptive Bitrate Video Transcoding Subsystem (HLS)
 Upon upload completion of any video MIME type (`video/*`), the Core automatically dispatches a transcoding task to BullMQ:
 
-* **Worker Architecture:** Managed by [`TranscodingProcessor`](file:///home/raj-ribadiya/Desktop/pravah/apps/core/src/transcoding/transcoding.processor.ts), running sandboxed background worker threads.
+* **Worker Architecture:** Managed by [`TranscodingProcessor`](src/transcoding/transcoding.processor.ts), running sandboxed background worker threads.
 * **Stream Probing:** Invokes `ffprobe` to determine input resolution, framerate, and audio layout.
 * **Dynamic Non-Upscaling Filter:** Transcodes video only into applicable resolutions at or below the source resolution across 6 standard profiles:
   * 1080p: 1920x1080 @ 4500 kbps
@@ -85,7 +85,7 @@ Upon upload completion of any video MIME type (`video/*`), the Core automaticall
 ---
 
 ### 4. Spherical Haversine GeoDNS Routing Engine
-The routing service ([`RoutingService`](file:///home/raj-ribadiya/Desktop/pravah/apps/core/src/common/routing/routing.service.ts)) resolves incoming download requests (`GET /api/v1/download/:fileId`) to the physically closest operational edge node:
+The routing service ([`RoutingService`](src/common/routing/routing.service.ts)) resolves incoming download requests (`GET /api/v1/download/:fileId`) to the physically closest operational edge node:
 
 * **Coordinate Resolution:** Extracts client geographic hints from headers (`x-test-client-region` or upstream GeoIP resolver).
 * **Exact Region Match:** If healthy edge nodes exist in the client's identical region, load is distributed uniformly across those nodes.
@@ -97,7 +97,7 @@ The routing service ([`RoutingService`](file:///home/raj-ribadiya/Desktop/pravah
 ---
 
 ### 5. Consistent Hashing Ring and Dynamic Topology
-Managed by [`HashRing`](file:///home/raj-ribadiya/Desktop/pravah/apps/core/src/common/replication/hash-ring.ts) and [`PlacementService`](file:///home/raj-ribadiya/Desktop/pravah/apps/core/src/placement/placement.service.ts):
+Managed by [`HashRing`](src/common/replication/hash-ring.ts) and [`PlacementService`](src/placement/placement.service.ts):
 
 * **Virtual Node Density:** Assigns 150 virtual nodes per physical Edge server on a $[0, 2^{32}-1]$ ring using MD5 hash distribution.
 * **Replica Assignment:** For any given `fileId`, a binary search on the ring identifies $N=3$ distinct physical nodes responsible for hosting replicas.
@@ -106,7 +106,7 @@ Managed by [`HashRing`](file:///home/raj-ribadiya/Desktop/pravah/apps/core/src/c
 ---
 
 ### 6. Active Health Monitoring and Failover Engine
-Operated by [`HealthCheckService`](file:///home/raj-ribadiya/Desktop/pravah/apps/core/src/common/health-check/health-check.service.ts):
+Operated by [`HealthCheckService`](src/common/health-check/health-check.service.ts):
 
 * **Heartbeat Ingestion:** Regional edge nodes post HMAC-authenticated heartbeats to `/api/v1/admin/health/heartbeat` every 10 seconds, writing an ephemeral Redis key with a 15-second TTL.
 * **Scanner Loop:** A background cron executes every 5 seconds, checking active Redis TTLs:
@@ -118,7 +118,7 @@ Operated by [`HealthCheckService`](file:///home/raj-ribadiya/Desktop/pravah/apps
 ---
 
 ### 7. Asynchronous Replication and Dead Letter Queue (DLQ)
-Operated by [`ReplicationProcessor`](file:///home/raj-ribadiya/Desktop/pravah/apps/core/src/replication/replication.processor.ts):
+Operated by [`ReplicationProcessor`](src/replication/replication.processor.ts):
 
 * **Event Triggering:** Ingestion of `file.uploaded` initiates BullMQ jobs to replicate files to the $N=3$ designated Edge nodes.
 * **Exponential Backoff:** Configured with 3 retry attempts using exponential backoff ($1\text{s} \to 2\text{s} \to 4\text{s}$) with randomized jitter.
@@ -129,7 +129,7 @@ Operated by [`ReplicationProcessor`](file:///home/raj-ribadiya/Desktop/pravah/ap
 
 ## Database Schema Reference (PostgreSQL + Prisma)
 
-The core database schema is modeled in [`prisma/schema.prisma`](file:///home/raj-ribadiya/Desktop/pravah/apps/core/prisma/schema.prisma):
+The core database schema is modeled in [`prisma/schema.prisma`](prisma/schema.prisma):
 
 | Model | Table Name | Purpose & Critical Fields |
 | :--- | :--- | :--- |

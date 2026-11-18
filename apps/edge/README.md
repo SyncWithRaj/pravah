@@ -71,7 +71,7 @@ The Edge data plane is engineered on `@nestjs/platform-fastify`, replacing tradi
 ---
 
 ### 2. Hybrid NVMe/SSD Disk and Redis RAM Caching
-The edge caching subsystem ([`EdgeCacheService`](file:///home/raj-ribadiya/Desktop/pravah/apps/edge/src/cache/cache.service.ts)) employs a hybrid storage strategy to balance speed and memory density:
+The edge caching subsystem ([`EdgeCacheService`](src/cache/cache.service.ts)) employs a hybrid storage strategy to balance speed and memory density:
 
 * **Small Files (< 2MB):** Cached directly in Redis RAM using binary buffers (`getBuffer` / `setBinary`). Retrieval latencies remain between 0.8ms and 2.5ms.
 * **Large Files ($\ge$ 2MB):** Stored on local high-speed NVMe/SSD disk storage (`CACHE_DISK_PATH/{fileId}/v{version}/content.bin`). Metadata (size, checksum, ETag, MIME type, disk pointer) is preserved in Redis hashes (`file:{fileId}:{version}:meta`).
@@ -105,7 +105,7 @@ When a cache miss occurs, the Edge node avoids immediately routing traffic acros
 ---
 
 ### 5. Adaptive HLS Video Segment Delivery
-The Edge provides high-performance video delivery via dedicated HLS handlers ([`EdgeContentController`](file:///home/raj-ribadiya/Desktop/pravah/apps/edge/src/content/edge-content.controller.ts)):
+The Edge provides high-performance video delivery via dedicated HLS handlers ([`EdgeContentController`](src/content/edge-content.controller.ts)):
 
 * **Route:** `GET /edge/content/:fileId/hls/*`
 * **MIME Negotiation:** Dynamically identifies MPEG-TS video segments (`video/MP2T`) versus Apple HLS playlists (`application/vnd.apple.mpegurl`).
@@ -117,7 +117,7 @@ The Edge provides high-performance video delivery via dedicated HLS handlers ([`
 ---
 
 ### 6. HMAC-SHA256 Signed Heartbeat Telemetry
-Operated by [`HeartbeatService`](file:///home/raj-ribadiya/Desktop/pravah/apps/edge/src/heartbeat/heartbeat.service.ts):
+Operated by [`HeartbeatService`](src/heartbeat/heartbeat.service.ts):
 
 * **Cron Interval:** Runs every 10 seconds (`*/10 * * * * *`).
 * **Cryptographic Payload:** Builds payload `${edgeNodeId}:POST:/api/v1/admin/health/heartbeat:${timestamp}`.
@@ -127,7 +127,7 @@ Operated by [`HeartbeatService`](file:///home/raj-ribadiya/Desktop/pravah/apps/e
 ---
 
 ### 7. Observability and Prometheus Diagnostics
-Operated by [`MetricsService`](file:///home/raj-ribadiya/Desktop/pravah/apps/edge/src/metrics/metrics.service.ts):
+Operated by [`MetricsService`](src/metrics/metrics.service.ts):
 
 * **Scrape Endpoint:** `GET /metrics` exports standard Prometheus metrics for Grafana scraping.
 * **Metrics Catalog:**
@@ -136,7 +136,7 @@ Operated by [`MetricsService`](file:///home/raj-ribadiya/Desktop/pravah/apps/edg
   * `bytes_served_total`: Total egress bytes classified by source (`ram_cache`, `peer_cache`, `origin_stream`).
   * `request_duration_seconds`: Histogram measuring end-to-end download latency by cache result and HTTP status code.
   * `peer_fetches_total`: Counter tracking peer fill attempts categorized by status (`success`, `miss`, `error`).
-* **Distributed Tracing:** [`tracer.ts`](file:///home/raj-ribadiya/Desktop/pravah/apps/edge/src/tracer.ts) initializes OpenTelemetry SDK with W3C `traceparent` context propagation, transmitting spans to Jaeger.
+* **Distributed Tracing:** [`tracer.ts`](src/tracer.ts) initializes OpenTelemetry SDK with W3C `traceparent` context propagation, transmitting spans to Jaeger.
 
 ---
 
