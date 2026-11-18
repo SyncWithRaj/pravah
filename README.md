@@ -368,9 +368,8 @@ pravah/
 │   └── helm/                     # Helm chart scaffolding
 ├── observability/                # Prometheus, Loki, Promtail, Grafana config
 ├── benchmarks/                   # k6 scenarios and benchmark reports
-├── docs/                         # Architecture, designs, phase reports
+├── docs/                         # Architecture, designs, phase & security reports
 ├── scripts/                      # RBAC, transcoding, k8s operational scripts
-├── AUDIT.md                      # Security audit and remediation record
 ├── Makefile                      # Developer command center
 └── docker-compose.yml            # Includes core + edge stacks
 ```
@@ -856,7 +855,7 @@ Always review `terraform plan` before applying. State is not committed.
 
 ## Security
 
-The repository includes `AUDIT.md`, a documented audit with 21 findings and their remediation status.
+The repository includes [`docs/reports/security_audit_2026_10.md`](./docs/reports/security_audit_2026_10.md), a documented audit with 21 findings and their remediation status.
 
 | Control | Implementation |
 | :--- | :--- |
@@ -944,7 +943,7 @@ The multi-region EKS report in `benchmarks/reports/` records a **106,000 RPS sus
 
 | Document | Contents |
 | :--- | :--- |
-| [`AUDIT.md`](./AUDIT.md) | Security audit, findings V-01…V-21, remediation |
+| [`docs/reports/security_audit_2026_10.md`](./docs/reports/security_audit_2026_10.md) | Security audit, findings V-01…V-21, remediation |
 | [`docs/architecture.md`](./docs/architecture.md) | System architecture |
 | [`docs/architecture_2.0.md`](./docs/architecture_2.0.md) | Revised architecture |
 | [`docs/designs/`](./docs/designs) | Consistent hashing, tiered cache, transcoding, routing, EKS |

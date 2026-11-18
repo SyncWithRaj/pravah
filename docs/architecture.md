@@ -27,7 +27,7 @@ flowchart TD
     Phase6["Phase 6: Multi-Region Deployment & Observability<br/>• AWS EC2 multi-region deployment<br/>• Prometheus metrics & Grafana dashboards<br/>• OpenTelemetry tracing & Loki logs<br/>• WebSocket real-time dashboard"]
     Phase7["Phase 7: System Hardening & Fault Tolerance<br/>• 3x exponential backoff & Dead Letter Queues (DLQ)<br/>• Manual DLQ replay API & Alert notifications<br/>• Automatic edge crash failover & replication repair<br/>• Measured performance benchmarks for README"]
     Phase8A["Phase 8A: Adaptive Bitrate Transcoding ✅<br/>• FFmpeg BullMQ worker pipeline (video/*)<br/>• 6-rendition HLS (1080p→144p) with no-upscale filter<br/>• Master .m3u8 + 4s .ts segment packaging<br/>• Edge HLS caching with CORS headers"]
-    Phase8B["Phase 8B: Kubernetes (EKS) Orchestration ✅<br/>• 16 K8s manifests + Helm charts<br/>• HPA auto-scaling (CPU, memory, RPS)<br/>• 100K RPS EKS stress test (1.77ms P50 latency)"]
+    Phase8B["Phase 8B: Kubernetes (EKS) Orchestration ✅<br/>• 16 K8s manifests + Helm charts<br/>• HPA auto-scaling (CPU, memory, RPS)<br/>• 100K RPS EKS stress test (1.77ms min edge latency)"]
     Phase8C["Phase 8C: Security Hardening & RBAC ✅<br/>• UnifiedAuthGuard (InterService → ApiKey → JWT)<br/>• RolesGuard with hierarchical permissions<br/>• ApiKeyGuard (SHA-256 constant-time lookup)<br/>• InterServiceGuard (HMAC-SHA256 + replay protection)"]
     Phase9["Phase 9: Zero-Copy Reverse Proxy Acceleration ✅<br/>• Nginx sendfile + tcp_nopush + tcp_nodelay<br/>• 20GB segment cache zone (.ts/.m4s/.mp4)<br/>• 1s manifest microcache zone (.m3u8)<br/>• Upstream keep-alive pooling to Fastify<br/>• Alpine Linux Dockerfile + CI matrix<br/>• K8s sidecar deployment"]
 
@@ -741,7 +741,7 @@ flowchart TD
     Secret -.-> EdgeDeploy
 ```
 
-**16 Kubernetes manifests** in `infra/k8s/` define the complete deployment, including Namespace, ConfigMaps, Secrets, Deployments, Services, HPAs, and Ingress rules. Benchmark results: **100K RPS on EKS with 1.77ms P50 latency** at 2,000 concurrent virtual users.
+**16 Kubernetes manifests** in `infra/k8s/` define the complete deployment, including Namespace, ConfigMaps, Secrets, Deployments, Services, HPAs, and Ingress rules. Benchmark results: **100K RPS on EKS with 1.77ms min edge latency** at 2,000 concurrent virtual users.
 
 ---
 

@@ -5,8 +5,8 @@ echo "================================================================="
 echo "☸️  PRAVAH CDN — KUBERNETES & HPA AUTOSCALING VALIDATION SUITE"
 echo "================================================================="
 
-K8S_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../infra/k8s" && pwd)"
-HELM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../infra/helm/pravah-cdn" && pwd)"
+K8S_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../infra/k8s" && pwd)"
+HELM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../infra/helm/pravah-cdn" && pwd)"
 
 echo "[1/4] 🔍 Inspecting Kubernetes Manifests in $K8S_DIR..."
 MANIFEST_COUNT=0
@@ -18,7 +18,7 @@ for manifest in "$K8S_DIR"/*.yaml; do
   fi
 done
 
-echo "      Total Manifests Validated: $MANIFEST_COUNT/11"
+echo "      Total Manifests Validated: $MANIFEST_COUNT"
 
 echo "[2/4] 📦 Inspecting Helm Chart in $HELM_DIR..."
 if [ -f "$HELM_DIR/Chart.yaml" ] && [ -f "$HELM_DIR/values.yaml" ]; then

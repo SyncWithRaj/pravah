@@ -2,7 +2,7 @@
 set -e
 
 CLUSTER_NAME="pravah-cluster"
-K8S_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../infra/k8s" && pwd)"
+K8S_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../infra/k8s" && pwd)"
 
 echo "================================================================="
 echo "☸️  PRAVAH CDN — LOCAL KUBERNETES CLUSTER (KIND) LAUNCHER"

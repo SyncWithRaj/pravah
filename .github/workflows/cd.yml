@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: infra/terraform
+        working-directory: infra/terraform/ec2-multi-region
 
     steps:
       - name: Checkout Codebase

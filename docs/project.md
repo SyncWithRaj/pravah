@@ -470,7 +470,7 @@ Every one of these should be a real, measured number with the test conditions st
 | 6 | Real multi-region EC2 deployment, measured latency with real routing, full observability (Prometheus, Grafana, Loki, Jaeger, WebSocket dashboard) | 2–3 weeks | ✅ Complete |
 | 7 | Hardening: rate limiting, DLQ, retries, auth, admin APIs, benchmarks written up | 2–3 weeks | ✅ Complete |
 | 8A | **Adaptive Bitrate Video Transcoding**: FFmpeg BullMQ pipeline, 6-rendition HLS (1080p→144p), `.m3u8` + `.ts` packaging, edge HLS caching | 2–3 weeks | ✅ Complete |
-| 8B | **Kubernetes (EKS) Orchestration**: 16 K8s manifests, Helm charts, HPA auto-scaling, 100K RPS stress test (1.77ms P50 latency) | 3–4 weeks | ✅ Complete |
+| 8B | **Kubernetes (EKS) Orchestration**: 16 K8s manifests, Helm charts, HPA auto-scaling, 100K RPS stress test (1.77ms min edge latency) | 3–4 weeks | ✅ Complete |
 | 8C | **Security Hardening & RBAC**: UnifiedAuthGuard (InterService → ApiKey → JWT), RolesGuard hierarchy, ApiKeyGuard (SHA-256), InterServiceGuard (HMAC-SHA256 + replay protection) | 2–3 weeks | ✅ Complete |
 | 9 | **Zero-Copy Reverse Proxy Edge Acceleration**: Nginx `sendfile` + `tcp_nopush` + `tcp_nodelay`, 20GB segment disk cache, 1s manifest microcache, upstream keep-alive pooling, Alpine Dockerfile, CI matrix, K8s sidecar deployment | 2–3 weeks | ✅ Complete |
 

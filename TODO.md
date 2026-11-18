@@ -45,7 +45,7 @@
 ### 2. Kubernetes (K8s / EKS) Orchestration (Phase 8B) [COMPLETED]
 - [x] **Container Packaging:** Helm charts and 16 Kubernetes manifests for Core Plane and Edge Data Plane.
 - [x] **Horizontal Pod Autoscaler (HPA):** Auto-scale edge caching pods and transcoding worker pods based on CPU, memory, and RPS.
-- [x] **High-Concurrency AWS EKS Load Test:** 100K RPS cloud stress testing suite on Amazon EKS with 2,000 VUs and 1.77ms latency.
+- [x] **High-Concurrency AWS EKS Load Test:** 100K RPS cloud stress testing suite on Amazon EKS with 2,000 VUs and 1.77ms min edge latency.
 
 ### 3. Security Hardening & Role-Based Access Control (Phase 8C) [COMPLETED]
 - [x] **Admin API Protection:** Add `UnifiedAuthGuard` and `RolesGuard` to secure `/api/v1/admin/*`, `/admin/dlq`, and `/admin/transcoding`.

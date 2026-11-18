@@ -10,6 +10,13 @@ apps/edge/dist
 .env
 .env.*
 !.env.example
+CREDENTIALS.txt
+.secrets.env*
+temp/
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.pem
 npm-debug.log
 yarn-error.log
 pnpm-debug.log

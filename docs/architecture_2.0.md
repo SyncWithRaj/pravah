@@ -899,7 +899,7 @@ pravah/
 | **6** | Multi-Region & Full Observability | ✅ Complete | Prometheus, Grafana, Loki, Jaeger (OpenTelemetry), WebSocket gateway, real-time dashboard |
 | **7** | System Hardening & Fault Tolerance | ✅ Complete | 3× exponential backoff, DLQ (Kafka + PostgreSQL), admin DLQ APIs, edge crash failover, hash ring self-healing, k6 benchmarks |
 | **8A** | Adaptive Bitrate Transcoding | ✅ Complete | FFmpeg BullMQ pipeline, 6-rendition HLS (1080p→144p), `.m3u8` + `.ts` packaging, edge HLS caching |
-| **8B** | Kubernetes (EKS) Orchestration | ✅ Complete | 16 K8s manifests, Helm, HPA auto-scaling, 100K RPS EKS stress test (1.77ms P50 latency) |
+| **8B** | Kubernetes (EKS) Orchestration | ✅ Complete | 16 K8s manifests, Helm, HPA auto-scaling, 100K RPS EKS stress test (1.77ms min edge latency) |
 | **8C** | Security Hardening & RBAC | ✅ Complete | `UnifiedAuthGuard` chain, `RolesGuard` hierarchy, `ApiKeyGuard` (SHA-256), `InterServiceGuard` (HMAC-SHA256), per-version stampede locks |
 | **9** | Zero-Copy Reverse Proxy | ✅ Complete | Nginx `sendfile`, 20GB segment cache, 1s manifest microcache, upstream keep-alive, Alpine Docker, CI/CD matrix, K8s sidecar |
 
@@ -918,7 +918,7 @@ pravah/
 | **Edge Regions** | 3 (Mumbai, Virginia, Frankfurt) |
 | **Cache Fill Tiers** | 3 (Local RAM → Peer Edge → Origin S3) |
 | **HLS Renditions** | 6 (1080p / 720p / 480p / 360p / 240p / 144p) |
-| **Benchmark Result** | 100K RPS on EKS with 1.77ms P50 latency |
+| **Benchmark Result** | 100K RPS on EKS with 1.77ms min edge latency |
 
 ### Target: 1,000,000 RPS Architecture
 
